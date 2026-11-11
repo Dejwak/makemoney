@@ -10,3 +10,7 @@ Písma v `assets/fonts` (IBM Plex Sans, JetBrains Mono, Bricolage Grotesque) jso
 SIL Open Font License 1.1, texty licencí leží vedle nich.
 
 „QR Code“ je registrovaná ochranná známka společnosti DENSO WAVE INCORPORATED.
+
+`pdf-lib.min.js` a `fontkit.umd.min.js` jsou oproti distribuci převedené do čistého ASCII
+(znaky mimo ASCII a řídicí znaky v řetězcích jsou zapsané jako `\uXXXX` / `\xNN`). Chování
+se nemění, jen jdou soubory publikovat i tam, kde hosting takové znaky ve zdrojáku odmítá.
