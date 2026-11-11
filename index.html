@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cinkne</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Faktura s QR Platbou za minutu. Zdarma, bez registrace, data zůstávají ve tvém prohlížeči. Přehled splatností, upomínky a kalkulačka hodinovky pro živnostníky.">
+<meta property="og:title" content="Cinkne – faktury, které se platí rychleji">
+<meta property="og:description" content="Vystav fakturu s QR Platbou, hlídej splatnosti a připomeň se dlužníkům. Zdarma a bez registrace.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0f3d2e">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f3d2e'/%3E%3Ccircle cx='32' cy='32' r='15' fill='%23f0b429'/%3E%3Cpath d='M38 26a8 8 0 1 0 0 12' fill='none' stroke='%230f3d2e' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="wordmark" href="#faktura" aria-label="Cinkne, úvod">
+      <span class="coin" aria-hidden="true"></span>Cinkne
+    </a>
+    <nav class="nav" aria-label="Hlavní">
+      <a href="#faktura" data-route="faktura">Faktura</a>
+      <a href="#prehled" data-route="prehled">Přehled</a>
+      <a href="#upominky" data-route="upominky">Upomínky</a>
+      <a href="#qr" data-route="qr">QR Platba</a>
+      <a href="#hodinovka" data-route="hodinovka">Hodinovka</a>
+      <a href="#pro" data-route="pro">Pro</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero" id="hero">
+  <div class="wrap hero-inner">
+    <div class="hero-copy">
+      <h1>Faktura odejde.<br>Na účtu <em>cinkne</em>.</h1>
+      <p>Vystav fakturu s QR Platbou za minutu. Odběratel namíří telefon a má zaplaceno, bez opisování čísla účtu a bez překlepů ve variabilním symbolu.</p>
+      <ul class="hero-facts">
+        <li>Zdarma a bez registrace</li>
+        <li>Data zůstávají v tvém prohlížeči</li>
+        <li>PDF, přehled splatností i upomínky</li>
+      </ul>
+    </div>
+    <div class="slip" aria-label="Platební příkaz k rozepsané faktuře">
+      <div class="slip-head"><span>Příkaz k úhradě</span><span class="slip-live">podle tvé faktury</span></div>
+      <div class="slip-row">
+        <span class="slip-label">Částka</span>
+        <div class="slip-value"><div class="comb" id="slip-amount"></div><span class="slip-unit" id="slip-currency">Kč</span></div>
+      </div>
+      <div class="slip-row">
+        <span class="slip-label">Variabilní symbol</span>
+        <div class="slip-value"><div class="comb" id="slip-vs"></div></div>
+      </div>
+      <div class="slip-row slip-row-plain">
+        <span class="slip-label">Splatnost</span>
+        <span class="slip-plain" id="slip-due"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<main class="wrap" id="app"></main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <p><strong>Cinkne</strong> pomáhá živnostníkům dostat zaplaceno. Bez registrace, bez cookies, bez sledování.</p>
+    <p>Nenahrazuje účetního ani daňového poradce. QR Platba je standard České bankovní asociace.</p>
+  </div>
+</footer>
+
+<script type="module" src="assets/js/app.js"></script>
+</body>
+</html>

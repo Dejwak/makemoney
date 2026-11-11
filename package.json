@@ -1,0 +1,12 @@
+{
+  "name": "cinkne",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Faktury s QR Platbou, přehled splatností, upomínky a kalkulačka hodinovky. Běží celé v prohlížeči.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "python3 -m http.server 8080",
+    "license": "node tools/gen-license.mjs"
+  }
+}
