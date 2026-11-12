@@ -25,15 +25,20 @@ Všechno se zapíná v jediném souboru, [`config.js`](config.js):
 
 1. **Dobrovolné příspěvky.** Vyplň `owner.account` (číslo účtu nebo IBAN) a `owner.name`.
    Na stránce Pro se objeví QR Platba na 50 / 100 / 250 Kč.
-2. **Placená verze Pro.** Založ si platební odkaz (např. Stripe Payment Link) a vlož ho do
-   `pro.paymentUrl`. Tím se funkce Pro (logo, barva, faktura bez patičky, CSV) zamknou.
-   Kódy pro zákazníky vyrobíš příkazem `node tools/gen-license.mjs 10`; otisky z výpisu vlož
-   do `pro.licenseHashes` a kódy posílej po zaplacení (ručně nebo automatickým e-mailem
-   z platební brány). Dokud `paymentUrl` chybí, je Pro odemčené všem jako beta.
+2. **Placená verze Pro.** Nastav `pro.enabled: true`. Funkce Pro (logo, barva, faktura bez
+   patičky, CSV) se zamknou a na stránce Pro se objeví nákup:
+   - **QR Platbou na tvůj účet** (stačí `owner.account` a `owner.email`). Každý zájemce dostane
+     vlastní variabilní symbol, po zaplacení ti ho pošle e-mailem a ty mu odpovíš kódem.
+     Žádné poplatky, žádná registrace u platební brány.
+   - **Přes platební bránu**, pokud vyplníš `pro.paymentUrl` (libovolný platební odkaz).
+
+   Kódy vyrobíš příkazem `node tools/gen-license.mjs 10`; otisky z výpisu vlož do
+   `pro.licenseHashes`, kódy posílej zákazníkům. Dokud je `pro.enabled` vypnuté, je Pro
+   odemčené všem jako beta.
 3. **Růst zdarma.** Jakmile je placená verze zapnutá, nesou faktury z bezplatné verze patičku
    „Vystaveno zdarma v aplikaci Cinkne“, takže každá odeslaná faktura ukáže aplikaci dalšímu
-   podnikateli.
-   Po vyplnění `siteUrl` se navíc zapne sdílení platebních odkazů z obrazovky QR Platba.
+   podnikateli. Po vyplnění `siteUrl` se navíc zapne sdílení platebních odkazů z obrazovky
+   QR Platba.
 
 Poctivá poznámka: ověření kódu probíhá v prohlížeči, takže ho technicky zdatný člověk obejde.
 Na nástroj za pár stovek to stačí; až to přestane stačit, je čas na server s účty.
@@ -47,7 +52,8 @@ Není potřeba nic instalovat ani sestavovat, stačí statický server:
 
 ```bash
 npm start          # http://localhost:8080
-npm test           # jednotkové testy (Node 22+)
+npm test           # testy výpočtů (Node 22+)
+npm run test:e2e   # průchod aplikací v prohlížeči (potřebuje balíček playwright)
 ```
 
 ## Nasazení
@@ -81,7 +87,7 @@ assets/js/lib/          logika bez závislosti na stránce
   store.js              stav aplikace a localStorage
 assets/vendor/          knihovny třetích stran (MIT), viz assets/vendor/README.md
 assets/fonts/           písma (SIL OFL 1.1)
-tests/                  testy logiky
+tests/                  testy výpočtů, tests/e2e průchod v prohlížeči
 tools/                  generátor licenčních kódů, sestavení artefaktu
 ```
 

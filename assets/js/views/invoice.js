@@ -30,9 +30,10 @@ export async function downloadInvoicePdf(invoice, button) {
     button.textContent = 'Připravuji PDF…';
   }
   try {
-    const bytes = await invoicePdf(invoice, layoutOptions(invoice));
-    await saveFile(safeFilename(`faktura-${invoice.number}.pdf`), bytes);
-    toast('PDF je připravené.');
+    const { bytes, missing } = await invoicePdf(invoice, layoutOptions(invoice));
+    await saveFile(safeFilename(`faktura-${invoice.number}.pdf`) || 'faktura.pdf', bytes);
+    if (missing.length) toast(`PDF je hotové, ale tyhle znaky písmo neumí a budou v něm chybět: ${missing.slice(0, 12).join(' ')}`, 'error');
+    else toast('PDF je připravené.');
     return true;
   } catch (err) {
     if (err && err.code === 'declined') toast('Uložení zrušeno.');
@@ -54,7 +55,9 @@ function validate(draft) {
   if (!String(draft.client.name).trim()) problems.push('Doplň odběratele.');
   if (!isIsoDate(draft.issued) || !isIsoDate(draft.due)) problems.push('Zkontroluj datum vystavení a splatnosti.');
   else if (draft.due < draft.issued) problems.push('Splatnost je dřív než datum vystavení.');
-  if (invoiceTotals(draft).total <= 0) problems.push('Přidej aspoň jednu položku s cenou.');
+  const total = invoiceTotals(draft).total;
+  if (total <= 0) problems.push('Přidej aspoň jednu položku s cenou.');
+  if (total > 99999999999) problems.push('Částka je příliš vysoká. Zkontroluj množství a ceny.');
   return problems;
 }
 

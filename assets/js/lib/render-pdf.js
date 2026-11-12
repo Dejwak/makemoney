@@ -71,7 +71,8 @@ function dataUrlBytes(dataUrl) {
 
 /**
  * Vyrobí PDF faktury. `layoutOpts` jsou volby pro layoutInvoice bez `measure`.
- * @returns {Promise<Uint8Array>}
+ * `missing` jsou znaky, které vložená písma neumí (emoji, čínština…) a v PDF by chyběly.
+ * @returns {Promise<{ bytes: Uint8Array, missing: string[] }>}
  */
 export async function invoicePdf(invoice, layoutOpts, deps) {
   const { PDFLib, fontkit } = deps || (await loadLibs());
@@ -90,12 +91,22 @@ export async function invoicePdf(invoice, layoutOpts, deps) {
   doc.setCreator('Cinkne');
   doc.setProducer('Cinkne');
 
+  const charSets = {};
+  const missing = new Set();
+  const noteMissing = (text, key) => {
+    if (!charSets[key]) charSets[key] = new Set((fonts[key] || fonts.sans).getCharacterSet());
+    for (const ch of text) {
+      if (ch.trim() && !charSets[key].has(ch.codePointAt(0))) missing.add(ch);
+    }
+  };
+
   const images = new Map();
   for (const ops of pages) {
     const page = doc.addPage([width, height]);
     for (const op of ops) {
       if (op.t === 'text') {
         const font = fonts[op.f] || fonts.sans;
+        noteMissing(op.s, fonts[op.f] ? op.f : 'sans');
         const w = op.a === 'l' ? 0 : font.widthOfTextAtSize(op.s, op.z);
         const x = op.a === 'r' ? op.x - w : op.a === 'c' ? op.x - w / 2 : op.x;
         page.drawText(op.s, { x, y: height - op.y, size: op.z, font, color: hexColor(PDFLib, op.c) });
@@ -123,5 +134,5 @@ export async function invoicePdf(invoice, layoutOpts, deps) {
       }
     }
   }
-  return doc.save();
+  return { bytes: await doc.save(), missing: [...missing] };
 }
