@@ -20,6 +20,7 @@ const TITLES = {
 
 const app = document.getElementById('app');
 const hero = document.getElementById('hero');
+const faq = document.getElementById('faq');
 const navLinks = [...document.querySelectorAll('[data-route]')];
 
 const views = {};
@@ -86,6 +87,7 @@ function show() {
     app.replaceChildren(crashCard());
   }
   hero.hidden = key !== 'faktura';
+  if (faq) faq.hidden = key !== 'faktura';
   for (const link of navLinks) {
     if (link.dataset.route === name) {
       link.setAttribute('aria-current', 'page');
