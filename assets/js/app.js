@@ -1,4 +1,5 @@
-import { h } from './ui.js';
+import { h, toast } from './ui.js';
+import { onStorageFailure } from './lib/store.js';
 import { formatDate } from './lib/calc.js';
 import { invoiceView } from './views/invoice.js';
 import { overviewView } from './views/overview.js';
@@ -112,6 +113,13 @@ async function ensureFonts() {
   }
   if (added && views.faktura) views.faktura.redraw();
 }
+
+let storageWarned = false;
+onStorageFailure(() => {
+  if (storageWarned) return;
+  storageWarned = true;
+  toast('Prohlížeč teď data neukládá (anonymní okno nebo plné úložiště). Stáhni si zálohu v Přehledu.', 'error');
+});
 
 window.addEventListener('hashchange', show);
 show();

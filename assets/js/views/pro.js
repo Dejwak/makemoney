@@ -7,7 +7,7 @@ import { normalizeAccount } from '../lib/iban.js';
 import { buildSpayd } from '../lib/spayd.js';
 import { qrMatrix, qrSvg } from '../lib/qr.js';
 import { isPro, proIsFree, unlockWithCode } from '../lib/pro.js';
-import { state } from '../lib/store.js';
+import { state, persist } from '../lib/store.js';
 
 const FREE = [
   'Faktury s QR Platbou bez omezení počtu',
@@ -31,6 +31,8 @@ export function proView() {
     const unlocked = isPro();
     const price = formatWhole(config.pro.priceCzk);
 
+    const owner = normalizeAccount(config.owner.account);
+
     let proAction;
     if (free) {
       proAction = h('p', { class: 'pill is-ok' }, 'Teď odemčeno všem');
@@ -38,9 +40,34 @@ export function proView() {
       proAction = h('p', { class: 'pill is-ok' }, 'Máš odemčeno. Díky!');
     } else {
       const code = field({ id: 'pro-code', label: 'Mám kód', mono: true, placeholder: 'CINK-XXXX-XXXX-XXXX' });
+      const ways = [];
+      if (config.pro.paymentUrl) {
+        ways.push(h('div', { class: 'pay-way' },
+          h('a', { class: 'btn btn-primary', href: config.pro.paymentUrl, target: '_blank', rel: 'noopener' }, `Zaplatit kartou ${price}`),
+          h('p', { class: 'fine' }, 'Kód ti přijde e-mailem po zaplacení.')));
+      }
+      if (owner.ok) {
+        if (!state.pro.order) {
+          state.pro.order = String(Math.floor(10000000 + Math.random() * 89999999));
+          persist();
+        }
+        const spayd = buildSpayd({ iban: owner.iban, amount: config.pro.priceCzk, vs: state.pro.order, message: 'Cinkne Pro', recipient: config.owner.name });
+        const qr = h('div', { class: 'qr-code qr-small' });
+        qr.innerHTML = qrSvg(qrMatrix(spayd), { title: `QR Platba na ${price}` });
+        ways.push(h('div', { class: 'pay-way pay-qr' },
+          qr,
+          h('div', { class: 'pay-qr-text' },
+            h('strong', null, `Zaplatit QR Platbou ${price}`),
+            h('dl', { class: 'facts' },
+              h('div', null, h('dt', null, 'Účet'), h('dd', { class: 'mono' }, owner.account)),
+              h('div', null, h('dt', null, 'Variabilní symbol'), h('dd', { class: 'mono' }, state.pro.order))),
+            h('p', { class: 'fine' }, config.owner.email
+              ? ['Po zaplacení napiš na ', h('span', { class: 'mono' }, config.owner.email), ' svůj variabilní symbol. Kód ti pošlu, jakmile platba dorazí.']
+              : 'Po zaplacení se ozvi provozovateli se svým variabilním symbolem a dostaneš kód.'))));
+      }
       proAction = h('div', { class: 'pro-buy' },
-        h('a', { class: 'btn btn-primary', href: config.pro.paymentUrl, target: '_blank', rel: 'noopener' }, `Koupit Pro za ${price}`),
-        h('p', { class: 'fine' }, 'Jednorázová platba, žádné předplatné. Kód ti přijde e-mailem.'),
+        ways.length ? ways : h('p', { class: 'fine' }, 'Platby se právě nastavují. Zkus to prosím později.'),
+        h('p', { class: 'fine' }, 'Jednorázová platba, žádné předplatné.'),
         h('form', { class: 'copy-field', novalidate: true, onsubmit: async (e) => {
           e.preventDefault();
           if (await unlockWithCode(code.input.value)) {
@@ -73,7 +100,6 @@ export function proView() {
       plans,
     ];
 
-    const owner = normalizeAccount(config.owner.account);
     if (owner.ok) {
       const tips = [50, 100, 250];
       let amount = 100;

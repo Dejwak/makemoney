@@ -65,6 +65,7 @@ export function remindersView() {
       onchange: (v) => { state.reminder.interestRate = v.trim(); persist(); render(); } });
     interest.hidden = activeTone !== 'final';
 
+    const sentBefore = Array.isArray(invoice.reminders) ? invoice.reminders : [];
     const subject = h('input', { id: 'rem-subject', type: 'text', readOnly: true, value: reminder.subject });
     const body = h('textarea', { id: 'rem-body', rows: 14, value: reminder.body });
     const email = invoice.client?.email || '';
@@ -98,7 +99,15 @@ export function remindersView() {
             h('button', { type: 'button', class: 'btn btn-small', onclick: () => copy(subject.value, 'Předmět', subject) }, 'Kopírovat')),
           h('label', { class: 'field', for: 'rem-body' }, h('span', { class: 'field-label' }, 'Text (můžeš upravit)'), body),
           h('div', { class: 'actions-row' },
-            h('button', { type: 'button', class: 'btn btn-primary', onclick: () => copy(body.value, 'Text upomínky', body) }, 'Kopírovat text upomínky'))
+            h('button', { type: 'button', class: 'btn btn-primary', onclick: () => copy(body.value, 'Text upomínky', body) }, 'Kopírovat text upomínky'),
+            h('button', { type: 'button', class: 'btn', disabled: example, onclick: () => {
+              if (!Array.isArray(invoice.reminders)) invoice.reminders = [];
+              invoice.reminders.push({ date: today, tone: activeTone });
+              persist(true);
+              toast('Zapsáno. V přehledu uvidíš, kdy ses naposledy připomněl(a).');
+              render();
+            } }, 'Zapsat jako odeslanou')),
+          sentBefore.length > 0 && h('p', { class: 'fine' }, `Upomínka už odešla ${sentBefore.length}×, naposledy ${formatDate(sentBefore[sentBefore.length - 1].date)}.`)
         )
       )
     );

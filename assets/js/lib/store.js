@@ -136,12 +136,18 @@ function read() {
 export const state = { ...defaults(), ...(read() || {}) };
 
 let timer = null;
+let failureHandler = null;
+/** Zavolá se, když se stav nepodaří uložit (anonymní okno, plné úložiště). */
+export function onStorageFailure(handler) {
+  failureHandler = handler;
+}
 function write() {
   timer = null;
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
     return true;
   } catch {
+    if (failureHandler) failureHandler();
     return false;
   }
 }
@@ -152,6 +158,16 @@ export function persist(now = false) {
   if (now) return write();
   timer = setTimeout(write, 250);
   return true;
+}
+
+// Rozepsané změny zapiš i při zavření nebo přepnutí stránky.
+if (typeof addEventListener === 'function') {
+  addEventListener('pagehide', () => {
+    if (timer) {
+      clearTimeout(timer);
+      write();
+    }
+  });
 }
 
 /** Faktury k zobrazení: vlastní, nebo ukázkové, dokud žádné vlastní nejsou. */
@@ -177,6 +193,19 @@ export function saveDraftAsInvoice() {
   state.profile = { ...draft.supplier };
   persist(true);
   return copy;
+}
+
+/** Nový koncept se stejným odběratelem a položkami jako daná faktura. */
+export function duplicateAsDraft(invoice) {
+  const draft = newDraft(state.profile, state.invoices);
+  const copy = JSON.parse(JSON.stringify(invoice));
+  draft.client = { ...emptyClient(), ...copy.client };
+  draft.items = copy.items && copy.items.length ? copy.items : draft.items;
+  draft.note = copy.note || '';
+  draft.currency = copy.currency || 'CZK';
+  state.draft = draft;
+  persist();
+  return draft;
 }
 
 export function startNewDraft() {

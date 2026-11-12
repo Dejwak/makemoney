@@ -233,7 +233,8 @@ export function layoutInvoice(invoice, opts) {
   y += 30;
 
   // ---- platební údaje ----------------------------------------------------
-  const hasQr = !!(payment && payment.matrix);
+  const paid = !!invoice.paidAt;
+  const hasQr = !paid && !!(payment && payment.matrix);
   const boxH = 128;
   if (y + boxH > bottom) continuePage();
   rect(M, y, CW, boxH, SOFT);
@@ -248,7 +249,7 @@ export function layoutInvoice(invoice, opts) {
   if (payment && payment.iban) payRows.push(['IBAN', formatIban(payment.iban), 'mono']);
   if (invoice.vs) payRows.push(['Variabilní symbol', invoice.vs, 'monoBold']);
   payRows.push(['Částka', money(totals.total), 'monoBold']);
-  payRows.push(['Splatnost', formatDate(invoice.due), 'mono']);
+  payRows.push(paid ? ['Uhrazeno', formatDate(invoice.paidAt), 'monoBold'] : ['Splatnost', formatDate(invoice.due), 'mono']);
   for (const [label, value, font] of payRows) {
     text(label, px, py, 'sans', 9, MUTED);
     text(value, px + 96, py, font, 9.5);
@@ -261,6 +262,9 @@ export function layoutInvoice(invoice, opts) {
     rect(qx - 6, qy - 6, size + 12, size + 12, '#ffffff');
     ops.push({ t: 'qr', matrix: payment.matrix, x: qx, y: qy, size });
     text('QR Platba', qx + size / 2, qy + size + 19, 'bold', 8, INK, 'c');
+  } else if (paid) {
+    text('UHRAZENO', right - 18, y + 58, 'bold', 20, accent, 'r');
+    text('Neplaťte, faktura je už zaplacená.', right - 18, y + 76, 'sans', 8.5, MUTED, 'r');
   }
   y += boxH + 22;
 

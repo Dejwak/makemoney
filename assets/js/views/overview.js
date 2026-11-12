@@ -1,7 +1,7 @@
 // Přehled faktur: co čeká, co je po splatnosti, co už cinklo.
 
 import { h, toast, confirmButton, chime } from '../ui.js';
-import { state, persist, visibleInvoices, exportBackup, importBackup, newDraft } from '../lib/store.js';
+import { state, persist, visibleInvoices, exportBackup, importBackup, newDraft, duplicateAsDraft } from '../lib/store.js';
 import { daysBetween, formatDate, formatMoney, invoiceStatus, invoiceTotals, todayIso } from '../lib/calc.js';
 import { saveFile } from '../lib/save.js';
 import { dayWord } from '../lib/reminders.js';
@@ -105,6 +105,7 @@ export function overviewView({ go }) {
         ? h('span', { class: 'pill is-danger' }, `${lateDays} ${dayWord(lateDays)} po splatnosti`)
         : h('span', { class: 'pill' }, lateDays === 0 ? 'Splatná dnes' : `Splatná za ${-lateDays} ${dayWord(-lateDays)}`);
 
+    const sent = Array.isArray(inv.reminders) ? inv.reminders : [];
     const li = h('li', { class: 'invoice-row is-' + status });
     const actions = h('div', { class: 'row-actions' });
     if (example) {
@@ -126,6 +127,7 @@ export function overviewView({ go }) {
         status !== 'paid' && h('button', { type: 'button', class: 'btn btn-ghost btn-small', onclick: () => go('upominky', { invoiceId: inv.id }) }, 'Upomínka'),
         pdfBtn,
         h('button', { type: 'button', class: 'btn btn-ghost btn-small', onclick: () => { state.draft = JSON.parse(JSON.stringify(inv)); persist(); go('faktura'); } }, 'Upravit'),
+        h('button', { type: 'button', class: 'btn btn-ghost btn-small', title: 'Nová faktura se stejným odběratelem a položkami', onclick: () => { duplicateAsDraft(inv); go('faktura'); } }, 'Kopie'),
         confirmButton('Smazat', 'Opravdu smazat?', () => {
           state.invoices = state.invoices.filter((x) => x.id !== inv.id);
           if (state.draft.id === inv.id) state.draft.id = null;
@@ -140,7 +142,8 @@ export function overviewView({ go }) {
       h('div', { class: 'row-main' },
         h('div', { class: 'row-who' }, h('strong', null, inv.client?.name || 'Bez odběratele'), h('span', { class: 'mono row-number' }, inv.number)),
         h('div', { class: 'row-amount mono' }, formatMoney(totals.total, inv.currency)),
-        h('div', { class: 'row-status' }, pill, h('span', { class: 'row-due' }, `splatnost ${formatDate(inv.due)}`)),
+        h('div', { class: 'row-status' }, pill, h('span', { class: 'row-due' }, `splatnost ${formatDate(inv.due)}`),
+          status !== 'paid' && sent.length > 0 && h('span', { class: 'row-due' }, `upomenuto ${sent.length}×, naposledy ${formatDate(sent[sent.length - 1].date)}`)),
         h('span', { class: 'stamp', 'aria-hidden': 'true' }, 'Zaplaceno')
       ),
       actions

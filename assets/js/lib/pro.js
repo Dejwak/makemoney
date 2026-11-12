@@ -1,9 +1,9 @@
 import config from '../../../config.js';
 import { state, persist } from './store.js';
 
-/** Dokud provozovatel nenastaví platební odkaz, běží Pro funkce všem (beta). */
+/** Dokud provozovatel placenou verzi nezapne, běží Pro funkce všem (beta). */
 export function proIsFree() {
-  return !config.pro.paymentUrl;
+  return !config.pro.enabled;
 }
 
 export function isPro() {

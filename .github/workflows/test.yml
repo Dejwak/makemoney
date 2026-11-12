@@ -13,3 +13,8 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+      - name: Průchod aplikací v prohlížeči
+        run: |
+          npm install --no-save playwright@1
+          npx playwright install --with-deps chromium
+          npm run test:e2e

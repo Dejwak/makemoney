@@ -102,13 +102,34 @@ export function formatDate(iso) {
 
 // ---- číslování --------------------------------------------------------
 
-/** Další číslo faktury v řadě RRRRNNNN podle už vystavených čísel. */
+/**
+ * Další číslo faktury. `existingNumbers` jsou už vystavená čísla, nejnovější první.
+ * Výchozí řada je RRRRNNNN a s novým rokem začíná od 0001. Kdo si čísluje po svém
+ * (FV-2026-012, 12/2026…), tomu se zvýší poslední skupina číslic naposledy vystavené faktury.
+ */
 export function nextInvoiceNumber(existingNumbers, year = new Date().getFullYear()) {
+  const taken = new Set(existingNumbers.map((n) => String(n).trim()));
+  const last = [...taken].find(Boolean);
+  if (last && !/^\d{8}$/.test(last)) {
+    // Pořadové číslo je poslední skupina číslic, která nevypadá jako letopočet (12/2026 -> 13/2026).
+    const groups = [...last.matchAll(/\d+/g)];
+    const serial = [...groups].reverse().find((g) => !/^(19|20)\d\d$/.test(g[0])) || groups[groups.length - 1];
+    if (serial) {
+      const head = last.slice(0, serial.index);
+      const tail = last.slice(serial.index + serial[0].length);
+      let n = BigInt(serial[0]);
+      let candidate;
+      do {
+        n += 1n;
+        candidate = head + String(n).padStart(serial[0].length, '0') + tail;
+      } while (taken.has(candidate));
+      return candidate;
+    }
+  }
   const prefix = String(year);
   let max = 0;
-  for (const n of existingNumbers) {
-    const s = String(n);
-    if (s.startsWith(prefix) && /^\d+$/.test(s)) max = Math.max(max, Number(s.slice(4)) || 0);
+  for (const s of taken) {
+    if (/^\d{8}$/.test(s) && s.startsWith(prefix)) max = Math.max(max, Number(s.slice(4)));
   }
   return prefix + String(max + 1).padStart(4, '0');
 }

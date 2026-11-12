@@ -553,7 +553,10 @@ input[type="color"] { width: 44px; height: 32px; padding: 2px; border: 1px solid
 .plan { display: grid; gap: 14px; justify-items: start; }
 .plan-pro { border: 2px solid var(--coin); }
 .plan-price { font-size: 1.5rem; font-weight: 600; }
-.pro-buy { display: grid; gap: 10px; justify-items: start; width: 100%; }
+.pro-buy { display: grid; gap: 14px; justify-items: start; width: 100%; }
+.pay-way { display: grid; gap: 6px; justify-items: start; width: 100%; }
+.pay-qr { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px 18px; padding-top: 14px; border-top: 1px dashed var(--rule); }
+.pay-qr-text { display: grid; gap: 8px; flex: 1 1 220px; min-width: 0; }
 .tip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; }
 .tip > div:first-child { display: grid; gap: 12px; flex: 1 1 320px; min-width: 0; max-width: 60ch; }
 .privacy { display: grid; gap: 14px; }

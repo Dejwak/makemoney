@@ -130,6 +130,12 @@ test('data', () => {
 test('číslování, VS, IČO, stav', () => {
   assert.equal(nextInvoiceNumber([], 2026), '20260001');
   assert.equal(nextInvoiceNumber(['20260001', '20260007', '20250099', 'FV-3'], 2026), '20260008');
+  assert.equal(nextInvoiceNumber(['20251234'], 2026), '20260001');
+  assert.equal(nextInvoiceNumber(['FV-2026-012', 'FV-2026-011'], 2026), 'FV-2026-013');
+  assert.equal(nextInvoiceNumber(['12/2026'], 2026), '13/2026');
+  assert.equal(nextInvoiceNumber(['A9', 'A10'], 2026), 'A11');
+  assert.equal(nextInvoiceNumber(['099'], 2026), '100');
+  assert.equal(nextInvoiceNumber(['bez čísla', '20260003'], 2026), '20260004');
   assert.equal(toVs('FV-2026/0001'), '20260001');
   assert.equal(toVs('123456789012345'), '6789012345');
   assert.ok(isValidIco('12345679'));
@@ -201,6 +207,14 @@ test('rozvržení: jedna strana, QR, částka i patička', () => {
   }
   const noBrand = layoutInvoice(inv, { measure, payment: invoicePayment(inv), branding: false });
   assert.ok(!noBrand.pages[0].some((op) => op.s === 'Vystaveno zdarma v aplikaci Cinkne'));
+});
+
+test('rozvržení: zaplacená faktura nese značku místo QR kódu', () => {
+  const inv = invoice({ paidAt: '2026-11-20' });
+  const { pages } = layoutInvoice(inv, { measure, payment: invoicePayment(inv), branding: true });
+  const texts = pages[0].filter((op) => op.t === 'text').map((op) => op.s);
+  assert.ok(texts.includes('UHRAZENO') && texts.includes('20. 11. 2026'));
+  assert.equal(pages[0].filter((op) => op.t === 'qr').length, 0);
 });
 
 test('rozvržení: plátce DPH a dlouhá faktura na víc stran', () => {

@@ -12,10 +12,13 @@ export default {
     email: '',
   },
 
-  // Placená verze. Dokud je paymentUrl prázdné, jsou funkce Pro odemčené všem (beta).
+  // Placená verze. Dokud je enabled false, jsou funkce Pro odemčené všem (beta).
+  // Po zapnutí se dá platit QR Platbou na účet provozovatele (owner.account + owner.email)
+  // a volitelně i přes platební bránu (paymentUrl).
   pro: {
+    enabled: false,
     priceCzk: 290,
-    paymentUrl: '', // platební odkaz, např. Stripe Payment Link
+    paymentUrl: '', // nepovinný platební odkaz, např. od platební brány
     licenseHashes: [], // SHA-256 otisky platných kódů, vyrobí je `node tools/gen-license.mjs`
   },
 };
