@@ -2,43 +2,81 @@
 
 export const VAT_RATES = [21, 12, 0];
 
-/** Text z formuláře ("1 250,50") -> číslo. Neplatný vstup = 0. */
+/**
+ * Text z formuláře -> číslo. Rozumí českému zápisu ("1 250,50", "1.250,50", "500,-", "12,50 Kč").
+ * Prázdný vstup je 0, nesrozumitelný vstup NaN.
+ */
+export function parseAmount(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+  let s = String(value ?? '').replace(/[\s\u00a0\u202f]/g, '');
+  if (!s) return 0;
+  s = s.replace(/(kč|czk|eur|€|%)$/i, '').replace(/[.,][-–—]$/, '').replace(/−/g, '-');
+  const comma = s.lastIndexOf(',');
+  const dot = s.lastIndexOf('.');
+  if (comma >= 0 && dot >= 0) {
+    // Poslední oddělovač je desetinný, ten druhý odděluje tisíce.
+    s = comma > dot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (comma >= 0) {
+    s = s.replace(',', '.');
+  }
+  return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+}
+
+/** Jako parseAmount, ale nesrozumitelný vstup počítá jako 0. */
 export function num(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const n = Number(String(value ?? '').replace(/\s| /g, '').replace(',', '.'));
+  const n = parseAmount(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+export function isAmount(value) {
+  return Number.isFinite(parseAmount(value));
+}
+
+/** Zaokrouhlení od nuly, aby záporné částky byly zrcadlem kladných. */
+function roundAway(x) {
+  return Math.sign(x) * Math.round(Math.abs(x));
 }
 
 /** Zaokrouhlení na haléře, odolné vůči chybám dvojkové aritmetiky. */
 export function toCents(amount) {
-  return Math.round((amount + Math.sign(amount) * 1e-9) * 100);
+  if (!Number.isFinite(amount)) return 0;
+  return Math.sign(amount) * Math.round((Math.abs(amount) + 1e-9) * 100) || 0;
 }
 
 const fmtCache = new Map();
-function formatter(currency) {
-  if (!fmtCache.has(currency)) {
-    fmtCache.set(
-      currency,
-      new Intl.NumberFormat('cs-CZ', { style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    );
+function formatter(currency, lang) {
+  const key = currency + lang;
+  if (!fmtCache.has(key)) {
+    fmtCache.set(key, new Intl.NumberFormat(lang === 'en' ? 'en-GB' : 'cs-CZ', {
+      style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2,
+    }));
   }
-  return fmtCache.get(currency);
+  return fmtCache.get(key);
 }
+const plainSpaces = (s) => s.replace(/[\u00a0\u202f]/g, ' ');
 
 /** Haléře -> "12 345,60 Kč" (s obyčejnými mezerami, aby šly do PDF). */
-export function formatMoney(cents, currency = 'CZK') {
-  return formatter(currency).format(cents / 100).replace(/[  ]/g, ' ');
+export function formatMoney(cents, currency = 'CZK', lang = 'cs') {
+  return plainSpaces(formatter(currency, lang).format(cents / 100));
+}
+
+/** Jednotková cena: dvě desetinná místa, u jemnějších cen až čtyři. */
+export function formatUnitPrice(value, currency = 'CZK', lang = 'cs') {
+  const fine = Math.abs(value * 100 - Math.round(value * 100)) > 1e-7;
+  if (!fine) return formatMoney(toCents(value), currency, lang);
+  return plainSpaces(new Intl.NumberFormat(lang === 'en' ? 'en-GB' : 'cs-CZ', {
+    style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 4,
+  }).format(value));
 }
 
 /** Celé koruny bez haléřů, pro přehledy a kalkulačku. */
 export function formatWhole(amount, currency = 'CZK') {
-  return new Intl.NumberFormat('cs-CZ', { style: 'currency', currency, maximumFractionDigits: 0 })
-    .format(Math.round(amount))
-    .replace(/[  ]/g, ' ');
+  const rounded = Math.round(amount) || 0; // bez záporné nuly
+  return plainSpaces(new Intl.NumberFormat('cs-CZ', { style: 'currency', currency, maximumFractionDigits: 0 }).format(rounded));
 }
 
-export function formatQty(qty) {
-  return new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 3 }).format(qty).replace(/[  ]/g, ' ');
+export function formatQty(qty, lang = 'cs') {
+  return plainSpaces(new Intl.NumberFormat(lang === 'en' ? 'en-GB' : 'cs-CZ', { maximumFractionDigits: 4 }).format(qty));
 }
 
 /**
@@ -48,18 +86,36 @@ export function formatQty(qty) {
 export function invoiceTotals(invoice) {
   const vatPayer = !!invoice.supplier?.vatPayer;
   const lines = (invoice.items || []).map((item) => {
-    const base = toCents(num(item.qty) * num(item.price));
-    const rate = vatPayer ? num(item.vat) : 0;
+    const base = toCents(num(item?.qty) * num(item?.price));
+    const rate = vatPayer ? num(item?.vat) : 0;
     return { base, rate };
   });
   const byRate = new Map();
-  for (const line of lines) byRate.set(line.rate, (byRate.get(line.rate) || 0) + line.base);
+  for (const line of lines) {
+    if (line.base !== 0) byRate.set(line.rate, (byRate.get(line.rate) || 0) + line.base);
+  }
   const vat = [...byRate.entries()]
     .sort((a, b) => b[0] - a[0])
-    .map(([rate, base]) => ({ rate, base, tax: Math.round((base * rate) / 100) }));
+    .map(([rate, base]) => ({ rate, base, tax: roundAway((base * rate) / 100) }));
   const base = vat.reduce((s, v) => s + v.base, 0);
   const tax = vat.reduce((s, v) => s + v.tax, 0);
-  return { lines, vat, base, tax, total: base + tax, vatPayer };
+  return { lines, vat, base, tax, total: base + tax, vatPayer, zeroRated: vatPayer && vat.some((v) => v.rate === 0) };
+}
+
+/** Obrat za kalendářní rok: plnění v Kč podle data plnění, bez DPH. */
+export function yearTurnover(invoices, year) {
+  let cents = 0;
+  let foreign = 0;
+  for (const inv of invoices) {
+    const date = isIsoDate(inv.duzp) ? inv.duzp : inv.issued;
+    if (!String(date).startsWith(String(year))) continue;
+    if ((inv.currency || 'CZK') !== 'CZK') {
+      foreign += 1;
+      continue;
+    }
+    cents += invoiceTotals(inv).base;
+  }
+  return { cents, foreign };
 }
 
 // ---- data -------------------------------------------------------------
@@ -73,31 +129,36 @@ export function todayIso(now = new Date()) {
 
 function parseIso(iso) {
   const [y, m, d] = String(iso).split('-').map(Number);
-  return new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+  return new Date(Date.UTC(y, m - 1, d));
 }
 
 export function isIsoDate(iso) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return false;
   const d = parseIso(iso);
-  return d.toISOString().slice(0, 10) === iso;
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
 }
 
+/** Posune datum o daný počet dní; pro neplatné datum vrací ''. */
 export function addDays(iso, days) {
+  if (!isIsoDate(iso)) return '';
   const d = parseIso(iso);
   d.setUTCDate(d.getUTCDate() + Number(days));
   return d.toISOString().slice(0, 10);
 }
 
-/** Počet dní od `from` do `to` (kladné, když je `to` později). */
+/** Počet dní od `from` do `to` (kladné, když je `to` později); pro neplatná data NaN. */
 export function daysBetween(from, to) {
+  if (!isIsoDate(from) || !isIsoDate(to)) return NaN;
   return Math.round((parseIso(to) - parseIso(from)) / 86400000);
 }
 
-/** "2026-11-25" -> "25. 11. 2026" */
-export function formatDate(iso) {
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "2026-11-25" -> "25. 11. 2026", anglicky "25 Nov 2026" */
+export function formatDate(iso, lang = 'cs') {
   if (!isIsoDate(iso)) return '';
   const [y, m, d] = iso.split('-').map(Number);
-  return `${d}. ${m}. ${y}`;
+  return lang === 'en' ? `${d} ${EN_MONTHS[m - 1]} ${y}` : `${d}. ${m}. ${y}`;
 }
 
 // ---- číslování --------------------------------------------------------
@@ -105,7 +166,7 @@ export function formatDate(iso) {
 /**
  * Další číslo faktury. `existingNumbers` jsou už vystavená čísla, nejnovější první.
  * Výchozí řada je RRRRNNNN a s novým rokem začíná od 0001. Kdo si čísluje po svém
- * (FV-2026-012, 12/2026…), tomu se zvýší poslední skupina číslic naposledy vystavené faktury.
+ * (FV-2026-012, 12/2026…), tomu se zvýší pořadové číslo naposledy vystavené faktury.
  */
 export function nextInvoiceNumber(existingNumbers, year = new Date().getFullYear()) {
   const taken = new Set(existingNumbers.map((n) => String(n).trim()));
@@ -153,45 +214,68 @@ export function isValidIco(value) {
 /** 'paid' | 'overdue' | 'open' */
 export function invoiceStatus(invoice, today = todayIso()) {
   if (invoice.paidAt) return 'paid';
-  if (invoice.due && invoice.due < today) return 'overdue';
+  if (isIsoDate(invoice.due) && invoice.due < today) return 'overdue';
   return 'open';
 }
 
 // ---- hodinovka --------------------------------------------------------
 
+const clamp = (value, min, max) => Math.min(Math.max(num(value), min), max);
+
+function billableHoursPerYear({ hoursPerWeek, billablePct, weeksOff }) {
+  const weeks = 52 - clamp(weeksOff, 0, 52);
+  return { weeks, hours: weeks * clamp(hoursPerWeek, 0, 168) * (clamp(billablePct, 0, 100) / 100) };
+}
+
 /**
  * Kolik si účtovat, aby po nákladech a odvodech zbyl požadovaný čistý příjem.
  * taxPct = odhad daní a pojištění jako podíl z tržeb.
  */
-export function hourlyRate({ netMonthly, costsMonthly, taxPct, hoursPerWeek, billablePct, weeksOff }) {
-  const tax = Math.min(Math.max(num(taxPct), 0), 90) / 100;
-  const revenueYear = ((num(netMonthly) + num(costsMonthly)) * 12) / (1 - tax);
-  const weeks = Math.max(52 - num(weeksOff), 0);
-  const billableHours = weeks * num(hoursPerWeek) * (Math.min(Math.max(num(billablePct), 0), 100) / 100);
-  const rate = billableHours > 0 ? revenueYear / billableHours : 0;
+export function hourlyRate(input) {
+  const tax = clamp(input.taxPct, 0, 90) / 100;
+  const revenueYear = ((Math.max(num(input.netMonthly), 0) + Math.max(num(input.costsMonthly), 0)) * 12) / (1 - tax);
+  const { weeks, hours } = billableHoursPerYear(input);
+  const rate = hours > 0 ? revenueYear / hours : 0;
   return {
     revenueYear,
     revenueMonth: revenueYear / 12,
-    billableHours,
-    billableHoursPerWeek: weeks > 0 ? billableHours / weeks : 0,
+    billableHours: hours,
+    billableHoursPerWeek: weeks > 0 ? hours / weeks : 0,
     rate,
     dayRate: rate * 8,
   };
 }
 
 /** Čistý měsíční příjem při dané hodinové sazbě (opačný směr výpočtu). */
-export function netFromRate({ rate, costsMonthly, taxPct, hoursPerWeek, billablePct, weeksOff }) {
-  const tax = Math.min(Math.max(num(taxPct), 0), 90) / 100;
-  const weeks = Math.max(52 - num(weeksOff), 0);
-  const billableHours = weeks * num(hoursPerWeek) * (Math.min(Math.max(num(billablePct), 0), 100) / 100);
-  const revenueYear = num(rate) * billableHours;
-  return (revenueYear * (1 - tax)) / 12 - num(costsMonthly);
+export function netFromRate(input) {
+  const tax = clamp(input.taxPct, 0, 90) / 100;
+  const { hours } = billableHoursPerYear(input);
+  return (num(input.rate) * hours * (1 - tax)) / 12 - Math.max(num(input.costsMonthly), 0);
 }
 
 // ---- úrok z prodlení --------------------------------------------------
 
 /** Úrok z prodlení v haléřích: jistina × roční sazba × dny / 365. */
 export function lateInterest(principalCents, annualRatePct, days) {
-  if (days <= 0 || num(annualRatePct) <= 0) return 0;
-  return Math.round((principalCents * (num(annualRatePct) / 100) * days) / 365);
+  const rate = num(annualRatePct);
+  if (!(days > 0) || rate <= 0 || rate > 1000) return 0;
+  return Math.round((principalCents * (rate / 100) * days) / 365);
+}
+
+// Zákonný úrok z prodlení (nařízení vlády č. 351/2013 Sb.): repo sazba ČNB platná první den
+// pololetí, ve kterém prodlení začalo, plus 8 procentních bodů. Tabulku je potřeba jednou
+// za půl roku doplnit podle cnb.cz.
+const STATUTORY_RATES = {
+  '2025-1': 12.0,
+  '2025-2': 11.5,
+  '2026-1': 11.5,
+  '2026-2': 11.75,
+};
+
+/** Zákonná roční sazba pro prodlení, které začalo den po splatnosti; null, když ji tabulka nezná. */
+export function statutoryInterestRate(dueIso) {
+  const start = addDays(dueIso, 1);
+  if (!start) return null;
+  const [year, month] = start.split('-').map(Number);
+  return STATUTORY_RATES[`${year}-${month <= 6 ? 1 : 2}`] ?? null;
 }

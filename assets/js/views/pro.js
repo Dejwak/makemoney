@@ -19,7 +19,7 @@ const FREE = [
 const PRO = [
   'Vlastní logo v záhlaví faktury',
   'Vlastní barva faktury',
-  'Faktura bez patičky „Vystaveno v aplikaci Cinkne“',
+  'Faktura bez patičky „Vystaveno zdarma v aplikaci Cinkne“',
   'Export faktur do CSV pro účetní',
 ];
 
@@ -70,9 +70,12 @@ export function proView() {
         h('p', { class: 'fine' }, 'Jednorázová platba, žádné předplatné.'),
         h('form', { class: 'copy-field', novalidate: true, onsubmit: async (e) => {
           e.preventDefault();
-          if (await unlockWithCode(code.input.value)) {
+          const result = await unlockWithCode(code.input.value);
+          if (result === 'ok') {
             toast('Pro je odemčené. Díky!');
             render();
+          } else if (result === 'unsupported') {
+            code.setHint('Tenhle prohlížeč kód ověřit neumí. Otevři stránku přes https.', 'warn');
           } else {
             code.setHint('Tenhle kód neznám. Zkontroluj překlepy.', 'warn');
           }
@@ -96,7 +99,7 @@ export function proView() {
 
     const sections = [
       h('div', { class: 'view-head' }, h('h1', null, 'Cinkne Pro'),
-        h('p', { class: 'lede' }, unlocked && !free ? 'Všechno je odemčené.' : 'Fakturovat můžeš zdarma napořád. Pro přidává vlastní vzhled a export.')),
+        h('p', { class: 'lede' }, unlocked && !free ? 'Všechno je odemčené.' : 'Fakturovat můžeš zdarma. Pro přidává vlastní vzhled a export.')),
       plans,
     ];
 
@@ -106,7 +109,7 @@ export function proView() {
       const box = h('div', { class: 'qr-code qr-small' });
       const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Výše příspěvku' });
       const draw = () => {
-        const spayd = buildSpayd({ iban: owner.iban, amount, message: 'Dik za Cinkne', recipient: config.owner.name });
+        const spayd = buildSpayd({ iban: owner.iban, amount, message: 'Dík za Cinkne', recipient: config.owner.name });
         box.innerHTML = qrSvg(qrMatrix(spayd), { title: `QR Platba na ${amount} Kč` });
         chips.replaceChildren(...tips.map((t) => h('button', { type: 'button', class: 'chip' + (t === amount ? ' is-active' : ''), 'aria-pressed': t === amount ? 'true' : 'false',
           onclick: () => { amount = t; draw(); } }, formatWhole(t))));
@@ -124,11 +127,13 @@ export function proView() {
     sections.push(h('section', { class: 'card privacy' },
       h('h2', null, 'Tvoje data jsou tvoje'),
       h('ul', { class: 'ticks' },
-        h('li', null, 'Faktury, odběratelé i číslo účtu zůstávají ve tvém prohlížeči. Na žádný server se neposílají.'),
-        h('li', null, 'Žádná registrace, žádné cookies, žádné sledování.'),
+        h('li', null, 'Faktury, odběratelé i číslo účtu zůstávají ve tvém prohlížeči. Neposíláme je na žádný server.'),
+        h('li', null, 'Žádná registrace, žádné cookies, žádné sledování. Data se ukládají jen do úložiště tvého prohlížeče.'),
         h('li', null, 'PDF i QR kódy vznikají přímo u tebe v zařízení.')),
       h('p', { class: 'fine' }, 'Cinkne nenahrazuje účetního ani daňového poradce. Za správnost vystavených dokladů odpovídá ten, kdo je vystavuje.'),
-      config.owner.email && h('p', { class: 'fine' }, 'Provozuje ', config.owner.name || 'Cinkne', ', kontakt: ', h('span', { class: 'mono' }, config.owner.email))
+      (config.owner.name || config.owner.email) && h('p', { class: 'fine' }, 'Provozuje ',
+        [config.owner.name, config.owner.address, config.owner.ico && `IČO ${config.owner.ico}`].filter(Boolean).join(', ') || 'Cinkne',
+        config.owner.email ? [', kontakt: ', h('span', { class: 'mono' }, config.owner.email)] : '', '.')
     ));
 
     root.replaceChildren(...sections);

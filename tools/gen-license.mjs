@@ -16,7 +16,8 @@ function code() {
 
 const rows = Array.from({ length: count }, () => {
   const c = code();
-  return { code: c, hash: createHash('sha256').update(c).digest('hex') };
+  // Otisk se počítá z kódu bez pomlček, stejně jako ho normalizuje aplikace.
+  return { code: c, hash: createHash('sha256').update(c.replace(/[^A-Z0-9]/g, '')).digest('hex') };
 });
 
 console.log('Kódy pro zákazníky:');

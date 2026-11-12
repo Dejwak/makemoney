@@ -35,9 +35,11 @@ export function field(opts) {
     rows: opts.textarea ? opts.rows || 3 : null,
     maxlength: opts.maxlength,
     class: opts.mono ? 'mono' : null,
+    'aria-label': opts.ariaLabel,
+    'aria-describedby': opts.id + '-hint',
     value: opts.value ?? '',
-    oninput: (e) => opts.oninput && opts.oninput(e.target.value, e.target),
-    onchange: (e) => opts.onchange && opts.onchange(e.target.value, e.target),
+    oninput: (e) => opts.oninput && opts.oninput(e.target.value, e.target, e),
+    onchange: (e) => opts.onchange && opts.onchange(e.target.value, e.target, e),
   });
   const hint = h('span', { class: 'field-hint', id: opts.id + '-hint' }, opts.hint || '');
   hint.hidden = !opts.hint;
@@ -48,6 +50,8 @@ export function field(opts) {
     hint.textContent = text || '';
     hint.hidden = !text;
     hint.className = 'field-hint' + (kind ? ' is-' + kind : '');
+    if (kind === 'warn' && text) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
   };
   return wrap;
 }
@@ -63,7 +67,7 @@ export function toast(message, kind = '') {
   el.textContent = message;
   el.className = 'toast is-visible' + (kind ? ' is-' + kind : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('is-visible'), 3200);
+  toastTimer = setTimeout(() => el.classList.remove('is-visible'), kind === 'error' ? 7000 : 3200);
 }
 
 /** Tlačítko, které napoprvé jen požádá o potvrzení (confirm() v rámci stránky). */

@@ -21,7 +21,7 @@ export function pageToSvg(ops, width, height, label = 'Náhled faktury') {
       const [family, weight] = FONTS[op.f] || FONTS.sans;
       const anchor = op.a === 'r' ? 'end' : op.a === 'c' ? 'middle' : 'start';
       parts.push(
-        `<text x="${n(op.x)}" y="${n(op.y)}" font-family='${family}' font-weight="${weight}" font-size="${op.z}" fill="${op.c}" text-anchor="${anchor}" xml:space="preserve">${esc(op.s)}</text>`
+        `<text x="${n(op.x)}" y="${n(op.y)}" font-family='${family}' font-weight="${weight}" font-size="${op.z}" fill="${op.c}" text-anchor="${anchor}" style="font-variant-ligatures:none" xml:space="preserve">${esc(op.s)}</text>`
       );
     } else if (op.t === 'line') {
       parts.push(`<line x1="${n(op.x1)}" y1="${n(op.y1)}" x2="${n(op.x2)}" y2="${n(op.y2)}" stroke="${op.c}" stroke-width="${op.w}"/>`);
@@ -46,5 +46,6 @@ export function canvasMeasure(text, font, size) {
   if (!ctx) ctx = document.createElement('canvas').getContext('2d');
   const [family, weight] = FONTS[font] || FONTS.sans;
   ctx.font = `${weight} ${size}px ${family}`;
+  if ('fontVariantLigatures' in ctx) ctx.fontVariantLigatures = 'none';
   return ctx.measureText(text).width;
 }

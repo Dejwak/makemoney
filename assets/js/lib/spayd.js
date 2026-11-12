@@ -1,18 +1,23 @@
-// QR Platba (Short Payment Descriptor, SPAYD 1.0) – standard České bankovní asociace.
+// QR Platba (Short Payment Descriptor, SPAYD 1.0) – standard České bankovní asociace –
+// a SEPA QR (EPC069-12) pro platby v eurech.
 
-/** Text bez diakritiky, velkými písmeny, bez hvězdičky (oddělovač polí). */
+/** Text bez diakritiky, velkými písmeny, bez znaků, které mají ve SPAYD zvláštní význam (* % +). */
 export function spaydText(value, maxLength) {
   const s = String(value || '')
+    .replace(/[łŁ]/g, 'L').replace(/[øØ]/g, 'O').replace(/[đĐ]/g, 'D').replace(/ß/g, 'SS').replace(/[æÆ]/g, 'AE')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
-    .replace(/[^0-9A-Z $%+\-./:,()@_!?#&=;']/g, ' ')
+    .replace(/[^0-9A-Z $\-./:,()@_!?#&=;']/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return s.slice(0, maxLength).trim();
 }
 
 const digits = (v, max) => String(v || '').replace(/\D/g, '').slice(0, max);
+const cleanIban = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+export const SPAYD_MAX_AMOUNT = 9999999.99;
 
 /**
  * @param {object} p
@@ -25,12 +30,12 @@ const digits = (v, max) => String(v || '').replace(/\D/g, '').slice(0, max);
  * @param {string} [p.dueDate]   YYYY-MM-DD
  */
 export function buildSpayd(p) {
-  const iban = String(p.iban || '').replace(/\s+/g, '').toUpperCase();
+  const iban = cleanIban(p.iban);
   if (!iban) throw new Error('Chybí IBAN.');
   const parts = ['SPD', '1.0', 'ACC:' + iban];
   const amount = Number(p.amount);
   if (Number.isFinite(amount) && amount > 0) {
-    if (amount > 9999999.99) throw new Error('Částka je pro QR Platbu příliš vysoká.');
+    if (amount > SPAYD_MAX_AMOUNT) throw new Error('Částka je pro QR Platbu příliš vysoká.');
     parts.push('AM:' + amount.toFixed(2));
   }
   parts.push('CC:' + (p.currency === 'EUR' ? 'EUR' : 'CZK'));
@@ -58,4 +63,29 @@ export function parseSpayd(str) {
     if (i > 0) out[part.slice(0, i)] = part.slice(i + 1);
   }
   return out;
+}
+
+const epcLine = (v, max) => String(v || '').replace(/[\r\n]+/g, ' ').trim().slice(0, max);
+
+/**
+ * SEPA QR (EPC069-12, verze 002) pro převod v eurech. Čtou ho bankovní aplikace v eurozóně.
+ * @param {{ iban: string, name: string, amount: number, bic?: string, remittance?: string }} p
+ */
+export function buildEpc(p) {
+  const iban = cleanIban(p.iban);
+  const name = epcLine(p.name, 70);
+  const amount = Number(p.amount);
+  if (!iban) throw new Error('Chybí IBAN.');
+  if (!name) throw new Error('Chybí jméno příjemce.');
+  if (!(amount > 0) || amount > 999999999.99) throw new Error('Částka je mimo rozsah SEPA QR.');
+  return [
+    'BCD', '002', '1', 'SCT',
+    cleanIban(p.bic).slice(0, 11),
+    name,
+    iban,
+    'EUR' + amount.toFixed(2),
+    '',
+    '',
+    epcLine(p.remittance, 140),
+  ].join('\n').replace(/\n+$/, '');
 }

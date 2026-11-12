@@ -49,7 +49,7 @@ export function czAccountToIban({ prefix = '', number, bank }) {
 export function isValidIban(input) {
   const s = String(input || '').replace(/\s+/g, '').toUpperCase();
   if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(s)) return false;
-  if (s.startsWith('CZ') && s.length !== 24) return false;
+  if (s.startsWith('CZ') && (s.length !== 24 || !/^\d+$/.test(s.slice(2)) || Number(s.slice(14)) === 0)) return false;
   if (s.startsWith('SK') && s.length !== 24) return false;
   return mod97(lettersToDigits(s.slice(4) + s.slice(0, 4))) === 1;
 }
@@ -70,7 +70,7 @@ export function formatIban(iban) {
 
 /**
  * Přijme české číslo účtu i IBAN.
- * Vrací { ok: true, iban, account } nebo { ok: false, error }.
+ * Vrací { ok: true, iban, account, czech } nebo { ok: false, error }.
  */
 export function normalizeAccount(input) {
   const raw = String(input || '').trim();
@@ -78,12 +78,12 @@ export function normalizeAccount(input) {
   const compact = raw.replace(/\s+/g, '').toUpperCase();
   if (/^[A-Z]{2}/.test(compact)) {
     if (!isValidIban(compact)) return { ok: false, error: 'IBAN nesedí. Zkontroluj překlepy.' };
-    return { ok: true, iban: compact, account: ibanToCzAccount(compact) || formatIban(compact) };
+    return { ok: true, iban: compact, account: ibanToCzAccount(compact) || formatIban(compact), czech: compact.startsWith('CZ') };
   }
   const parsed = parseCzAccount(compact);
   if (!parsed) {
-    return { ok: false, error: 'Číslo účtu nesedí. Správný tvar je 19-2000145399/0800.' };
+    return { ok: false, error: 'Číslo účtu nesedí. Správný tvar je například 2000145399/0800 nebo 19-2000145399/0800.' };
   }
   const iban = czAccountToIban(parsed);
-  return { ok: true, iban, account: (parsed.prefix ? parsed.prefix + '-' : '') + parsed.number + '/' + parsed.bank };
+  return { ok: true, iban, account: ibanToCzAccount(iban), czech: true };
 }

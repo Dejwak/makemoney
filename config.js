@@ -6,9 +6,12 @@ export default {
   siteUrl: '',
 
   // Kdo aplikaci provozuje. Vyplněný účet zapne dobrovolné příspěvky přes QR Platbu.
+  // Jakmile přijímáš platby, zákon chce na webu i sídlo a IČO provozovatele.
   owner: {
     name: '',
-    account: '', // české číslo účtu (19-2000145399/0800) nebo IBAN
+    address: '',
+    ico: '',
+    account: '', // české číslo účtu (2000145399/0800) nebo IBAN
     email: '',
   },
 

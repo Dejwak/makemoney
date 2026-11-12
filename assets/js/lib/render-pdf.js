@@ -81,9 +81,17 @@ export async function invoicePdf(invoice, layoutOpts, deps) {
   doc.registerFontkit(fontkit);
   const fonts = {};
   for (const key of Object.keys(FONT_FILES)) {
-    fonts[key] = await doc.embedFont(fontBytes[key], { subset: true });
+    // Bez ligatur: čísla faktur jako FA-2026--001 se mají vytisknout znak po znaku
+    // (a knihovna na ligaturách strojového písma padá).
+    fonts[key] = await doc.embedFont(fontBytes[key], { subset: true, features: { liga: false, calt: false, clig: false, dlig: false, rlig: false } });
   }
-  const measure = (text, font, size) => (fonts[font] || fonts.sans).widthOfTextAtSize(text, size);
+  const measure = (text, font, size) => {
+    try {
+      return (fonts[font] || fonts.sans).widthOfTextAtSize(text, size);
+    } catch {
+      return fonts.sans.widthOfTextAtSize(text, size);
+    }
+  };
   const { pages, width, height } = layoutInvoice(invoice, { ...layoutOpts, measure });
 
   doc.setTitle(`Faktura ${invoice.number || ''}`.trim());
@@ -107,9 +115,14 @@ export async function invoicePdf(invoice, layoutOpts, deps) {
       if (op.t === 'text') {
         const font = fonts[op.f] || fonts.sans;
         noteMissing(op.s, fonts[op.f] ? op.f : 'sans');
-        const w = op.a === 'l' ? 0 : font.widthOfTextAtSize(op.s, op.z);
+        const w = op.a === 'l' ? 0 : measure(op.s, op.f, op.z);
         const x = op.a === 'r' ? op.x - w : op.a === 'c' ? op.x - w / 2 : op.x;
-        page.drawText(op.s, { x, y: height - op.y, size: op.z, font, color: hexColor(PDFLib, op.c) });
+        const style = { x, y: height - op.y, size: op.z, color: hexColor(PDFLib, op.c) };
+        try {
+          page.drawText(op.s, { ...style, font });
+        } catch {
+          page.drawText(op.s, { ...style, font: fonts.sans });
+        }
       } else if (op.t === 'line') {
         page.drawLine({
           start: { x: op.x1, y: height - op.y1 },

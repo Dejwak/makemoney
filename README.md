@@ -10,9 +10,9 @@ u uživatele v `localStorage`, PDF i QR kódy vznikají přímo v jeho zařízen
 
 | Obrazovka | K čemu je |
 | --- | --- |
-| **Faktura** | Formulář s živým náhledem A4. Neplátce i plátce DPH (21 / 12 / 0 %), CZK a EUR, automatické číslování, QR Platba přímo na faktuře, export do PDF. |
-| **Přehled** | Kolik čeká na zaplacení, kolik je po splatnosti, kolik letos přišlo. Označení zaplacených faktur, záloha a obnova dat, export CSV pro účetní. |
-| **Upomínky** | Hotový text ve třech tónech podle počtu dní po splatnosti, volitelně s úrokem z prodlení. |
+| **Faktura** | Formulář s živým náhledem A4. Neplátce i plátce DPH (21 / 12 / 0 % s důvodem), CZK a EUR, česky i anglicky, automatické číslování, QR Platba (u faktur v eurech SEPA QR) přímo na faktuře, export do PDF. |
+| **Přehled** | Kolik čeká na zaplacení, kolik je po splatnosti, kolik letos přišlo. Označení zaplacených faktur, kopie faktury, hlídač limitu obratu pro DPH, záloha a obnova dat, export CSV pro účetní. |
+| **Upomínky** | Hotový text podle počtu dní po splatnosti, volitelně se zákonným úrokem z prodlení, evidence odeslaných upomínek. |
 | **QR Platba** | Samostatný platební kód (dluh za večeři, záloha). Uložení jako PNG, sdílení odkazem. |
 | **Hodinovka** | Kalkulačka minimální hodinové sazby z požadovaného čistého příjmu, nákladů a reálně fakturovatelného času. |
 | **Pro** | Ceník, odemčení placené verze, dobrovolné příspěvky. |
@@ -92,6 +92,16 @@ tools/                  generátor licenčních kódů, sestavení artefaktu
 ```
 
 Náhled i PDF kreslí totéž rozvržení z `layout.js`, takže to, co uživatel vidí, je to, co stáhne.
+
+## Co je potřeba hlídat ručně
+
+- **Zákonný úrok z prodlení.** Tabulka sazeb po pololetích je v `assets/js/lib/calc.js`
+  (`STATUTORY_RATES`). Jednou za půl roku do ní doplň novou sazbu: repo sazba ČNB platná
+  první den pololetí plus 8 procentních bodů.
+- **Limit obratu pro DPH** (2 000 000 Kč a 2 536 500 Kč) je v `assets/js/views/overview.js`.
+- **Orientační odvody v kalkulačce hodinovky** (`assets/js/views/rate.js`) platí pro rok 2026.
+- **Údaje provozovatele.** Než zapneš placenou verzi nebo příspěvky, vyplň v `config.js`
+  i `owner.address` a `owner.ico`; zobrazí se na stránce Pro.
 
 ## Upozornění
 
