@@ -3,10 +3,13 @@
 import { h, field, toast, confirmButton } from '../ui.js';
 import {
   state, persist, touchDraft, saveDraftAsInvoice, startNewDraft, clearExample, emptyItem, storedDraftInvoice,
+  exampleSupplierFields,
 } from '../lib/store.js';
 import {
-  VAT_RATES, addDays, daysBetween, formatMoney, invoiceTotals, isAmount, isIsoDate, isValidIco, num, toVs,
+  VAT_RATES, addDays, daysBetween, formatMoney, invoiceTotals, isAmount, isBusinessDate, isValidIco, num, toVs,
 } from '../lib/calc.js';
+
+const MAX_ITEMS = 200;
 import { invoicePayment } from '../lib/payment.js';
 import { layoutInvoice, DEFAULT_ACCENT } from '../lib/layout.js';
 import { pageToSvg, canvasMeasure } from '../lib/render-svg.js';
@@ -46,6 +49,8 @@ export async function downloadInvoicePdf(invoice, button) {
     if (button) {
       button.disabled = false;
       button.textContent = original;
+      // Vypnuté tlačítko ztrácí fokus; vrať ho, pokud si ho mezitím nevzalo nic jiného.
+      if (document.activeElement === document.body && button.isConnected) button.focus();
     }
   }
 }
@@ -57,17 +62,22 @@ export function validateInvoice(draft, otherInvoices = []) {
   const s = draft.supplier;
   const totals = invoiceTotals(draft);
   if (!String(draft.number).trim()) problems.push('Doplň číslo faktury.');
-  else if (otherInvoices.some((inv) => inv.id !== draft.id && inv.number === String(draft.number).trim())) {
+  else if (otherInvoices.some((inv) => inv.id !== draft.id && String(inv.number).toLowerCase() === String(draft.number).trim().toLowerCase())) {
     problems.push(`Číslo ${draft.number} už má jiná faktura. Každá faktura potřebuje vlastní číslo.`);
   }
   if (!String(s.name).trim()) problems.push('Doplň své jméno nebo název firmy.');
   if (!String(s.street).trim() || !String(s.city).trim()) problems.push('Doplň svou adresu (sídlo podnikání).');
   if (!String(draft.client.name).trim()) problems.push('Doplň odběratele.');
-  if (!isIsoDate(draft.issued) || !isIsoDate(draft.due)) problems.push('Zkontroluj datum vystavení a splatnosti.');
+  const leftover = exampleSupplierFields(s);
+  if (leftover.length) problems.push(`V údajích dodavatele zůstaly ukázkové hodnoty (${leftover.join(', ')}). Přepiš je svými.`);
+  if (!isBusinessDate(draft.issued) || !isBusinessDate(draft.due)) problems.push('Zkontroluj datum vystavení a splatnosti.');
   else if (draft.due < draft.issued) problems.push('Datum splatnosti je dřív než datum vystavení.');
-  if (draft.duzp && !isIsoDate(draft.duzp)) problems.push('Zkontroluj datum plnění.');
+  else if (daysBetween(draft.issued, draft.due) > 730) problems.push('Splatnost je víc než dva roky po vystavení. Zkontroluj rok.');
+  if (draft.duzp && !isBusinessDate(draft.duzp)) problems.push('Zkontroluj datum plnění.');
+  if (draft.items.length > MAX_ITEMS) problems.push(`Faktura může mít nejvýš ${MAX_ITEMS} položek.`);
   draft.items.forEach((item, i) => {
     if (!isAmount(item.qty)) problems.push(`Položka ${i + 1}: množství není číslo.`);
+    else if (String(item.qty).trim() === '' && num(item.price) !== 0) problems.push(`Položka ${i + 1}: doplň množství.`);
     if (!isAmount(item.price)) problems.push(`Položka ${i + 1}: ceně nerozumím. Piš ji třeba jako 1 250,50.`);
   });
   if (totals.total <= 0) problems.push('Přidej aspoň jednu položku s cenou.');
@@ -90,6 +100,7 @@ export function validateInvoice(draft, otherInvoices = []) {
 const PAYMENT_STATUS = {
   empty: ['QR kód se objeví, jakmile bude co platit.', ''],
   limit: ['Částka je na QR Platbu příliš vysoká (nejvýš 9 999 999,99 Kč). Faktura bude bez kódu.', 'warn'],
+  limitEur: ['Částka je na SEPA QR příliš vysoká. Faktura bude bez kódu.', 'warn'],
   foreign: ['QR Platba funguje jen s českým účtem. Faktura bude bez kódu.', 'warn'],
   name: ['Doplň své jméno, ať jde vytvořit SEPA QR.', 'warn'],
   spayd: ['QR Platba je na faktuře. Odběratel zaplatí namířením telefonu.', 'ok'],
@@ -108,6 +119,8 @@ export function invoiceView({ onTotals }) {
   function renderPreview() {
     previewQueued = false;
     const d = draft();
+    const saved = storedDraftInvoice();
+    d.paidAt = saved ? saved.paidAt : null;
     const opts = layoutOptions(d);
     const { pages, width, height } = layoutInvoice(d, { ...opts, measure: canvasMeasure });
     previewPages.innerHTML = pages
@@ -151,7 +164,7 @@ export function invoiceView({ onTotals }) {
     // Údaje dodavatele z nové faktury se rovnou pamatují pro další; oprava staré faktury je nemění.
     const setSupplier = (key) => (value) => {
       s[key] = value;
-      if (!stored) state.profile[key] = value;
+      if (!storedDraftInvoice()) state.profile[key] = value;
       changed();
     };
 
@@ -177,21 +190,26 @@ export function invoiceView({ onTotals }) {
     const dueField = field({ id: 'inv-due', label: 'Splatnost', type: 'date', value: d.due, oninput: set(d, 'due') });
     const supplyLabel = () => (s.vatPayer ? 'Datum zdanitelného plnění (DUZP)' : 'Datum plnění');
     const duzpField = field({ id: 'inv-duzp', label: supplyLabel(), type: 'date', value: d.duzp || d.issued, oninput: set(d, 'duzp') });
+    // Poslední smysluplné datum vystavení. Při ručním psaní roku prohlížeč posílá i mezistavy
+    // (0002, 0020, 0202…), od těch se nic odvozovat nesmí.
+    let anchor = isBusinessDate(d.issued) ? d.issued : null;
     const issuedField = field({ id: 'inv-issued', label: 'Datum vystavení', type: 'date', value: d.issued,
       oninput: (v) => {
-        // Datum plnění a splatnost se posouvají s datem vystavení, dokud je uživatel nezměnil jinak.
-        const old = d.issued;
         d.issued = v;
-        if (isIsoDate(old) && isIsoDate(v)) {
-          if (d.duzp === old || !d.duzp) { d.duzp = v; duzpField.input.value = v; }
-          const offset = daysBetween(old, d.due);
-          if (Number.isFinite(offset) && offset >= 0) { d.due = addDays(v, offset); dueField.input.value = d.due; }
+        if (isBusinessDate(v)) {
+          // Datum plnění a splatnost se posouvají s datem vystavení, dokud je uživatel nezměnil jinak.
+          if (anchor && anchor !== v) {
+            if (d.duzp === anchor || !d.duzp) { d.duzp = v; duzpField.input.value = v; }
+            const offset = daysBetween(anchor, d.due);
+            if (offset >= 0 && offset <= 730) { d.due = addDays(v, offset); dueField.input.value = d.due; }
+          }
+          anchor = v;
         }
         changed();
       } });
     const dueChips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Splatnost za' },
       [7, 14, 30].map((days) => h('button', { type: 'button', class: 'chip', onclick: () => {
-        if (!isIsoDate(d.issued)) {
+        if (!isBusinessDate(d.issued)) {
           dueField.setHint('Nejdřív vyplň datum vystavení.', 'warn');
           return;
         }
@@ -201,8 +219,14 @@ export function invoiceView({ onTotals }) {
         changed();
       } }, `${days} dní`))
     );
-    const rateField = field({ id: 'inv-rate', label: 'Kurz (Kč za 1 EUR)', value: d.exchangeRate, mono: true, inputmode: 'decimal',
-      hint: 'Kurz platný ke dni plnění. DPH se na faktuře uvede i v korunách.', oninput: set(d, 'exchangeRate') });
+    const rateHint = 'Kurz platný ke dni plnění. DPH se na faktuře uvede i v korunách.';
+    const rateField = field({ id: 'inv-rate', label: 'Kurz (Kč za 1 EUR)', value: d.exchangeRate, mono: true, inputmode: 'decimal', maxlength: 12, hint: rateHint,
+      oninput: (v) => {
+        d.exchangeRate = v;
+        const bad = v.trim() !== '' && !(isAmount(v) && num(v) > 0);
+        rateField.setHint(bad ? 'Kurzu nerozumím. Piš ho třeba jako 24,35.' : rateHint, bad ? 'warn' : '');
+        changed();
+      } });
     const syncConditional = () => {
       rateField.hidden = !(s.vatPayer && d.currency === 'EUR');
       duzpField.querySelector('.field-label').textContent = supplyLabel();
@@ -237,7 +261,7 @@ export function invoiceView({ onTotals }) {
     const dicField = field({ id: 'sup-dic', label: 'DIČ', value: s.dic, mono: true, maxlength: 16, oninput: setSupplier('dic') });
     const vatPayer = h('input', { type: 'checkbox', id: 'sup-vat', checked: s.vatPayer, onchange: (e) => {
       s.vatPayer = e.target.checked;
-      if (!stored) state.profile.vatPayer = s.vatPayer;
+      if (!storedDraftInvoice()) state.profile.vatPayer = s.vatPayer;
       syncConditional();
       buildItems();
       changed();
@@ -245,14 +269,14 @@ export function invoiceView({ onTotals }) {
 
     const pro = isPro();
     const logoText = () => (state.profile.logo ? 'Logo je nahrané.' : 'PNG nebo JPG, zobrazí se v záhlaví.');
-    const logoInfo = h('span', { class: 'field-hint' }, logoText());
-    const logoInput = h('input', { type: 'file', id: 'sup-logo', accept: 'image/png,image/jpeg', disabled: !pro, onchange: (e) => {
+    const logoInfo = h('span', { class: 'field-hint', id: 'sup-logo-hint' }, logoText());
+    const logoInput = h('input', { type: 'file', id: 'sup-logo', accept: 'image/png,image/jpeg', disabled: !pro, 'aria-describedby': 'sup-logo-hint', onchange: (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
       readLogo(file).then((logo) => {
         state.profile.logo = logo;
         logoInfo.textContent = logoText();
-        removeLogo.hidden = false;
+        removeLogo.hidden = !pro;
         persist();
         schedulePreview();
       }).catch(() => toast('Obrázek se nepodařilo načíst. Zkus PNG nebo JPG.', 'error'));
@@ -265,7 +289,7 @@ export function invoiceView({ onTotals }) {
       persist();
       schedulePreview();
     } }, 'Odebrat logo');
-    removeLogo.hidden = !state.profile.logo;
+    removeLogo.hidden = !pro || !state.profile.logo;
     const colorInput = h('input', { type: 'color', id: 'sup-color', value: state.profile.color || DEFAULT_ACCENT, disabled: !pro,
       oninput: (e) => { state.profile.color = e.target.value; persist(); schedulePreview(); } });
 
@@ -294,7 +318,7 @@ export function invoiceView({ onTotals }) {
             removeLogo,
             h('label', { class: 'color-label', for: 'sup-color' }, h('span', null, 'Barva'), colorInput)
           ),
-          pro ? logoInfo : h('span', { class: 'field-hint' }, 'Logo, vlastní barva a faktura bez patičky „Vystaveno zdarma v aplikaci Cinkne“ jsou ve verzi Pro.')
+          pro ? logoInfo : h('span', { class: 'field-hint', id: 'sup-logo-hint' }, 'Logo, vlastní barva a faktura bez patičky „Vystaveno zdarma v aplikaci Cinkne“ jsou ve verzi Pro.')
         )
       )
     );
@@ -302,21 +326,26 @@ export function invoiceView({ onTotals }) {
     accountField.setHint(accountHint(), 'warn');
 
     // -- odběratel
+    // Faktury jsou od nejnovější: u odběratele platí údaje z jeho poslední faktury.
     const known = new Map();
-    for (const inv of state.invoices) if (inv.client && inv.client.name) known.set(inv.client.name, inv.client);
+    for (const inv of state.invoices) if (inv.client && inv.client.name && !known.has(inv.client.name)) known.set(inv.client.name, inv.client);
+    const autofilled = {};
     const clientFields = {};
     const cf = (key, opts) => (clientFields[key] = field({ ...opts, value: c[key], oninput: set(c, key) }));
     const clientName = field({ id: 'cli-name', label: 'Jméno nebo název', value: c.name, wide: true, list: 'known-clients', maxlength: 120,
       oninput: (v, el, e) => {
         c.name = v;
-        // Doplň údaje jen při výběru z nabídky a jen do polí, která jsou ještě prázdná.
+        // Doplň údaje jen při výběru z nabídky. Co uživatel napsal sám, zůstává;
+        // co doplnil předchozí výběr, se nahradí údaji nově vybraného odběratele.
         const picked = e && (e.inputType === 'insertReplacementText' || e.inputType === undefined);
         const match = picked ? known.get(v) : null;
         if (match) {
           for (const [key, f] of Object.entries(clientFields)) {
-            if (!String(c[key] || '').trim() && match[key]) {
-              c[key] = match[key];
-              f.input.value = match[key];
+            const current = String(c[key] || '').trim();
+            if (!current || current === autofilled[key]) {
+              c[key] = match[key] || '';
+              f.input.value = c[key];
+              autofilled[key] = c[key].trim();
             }
           }
         }
@@ -343,10 +372,15 @@ export function invoiceView({ onTotals }) {
     const syncZero = () => {
       zeroField.hidden = !(s.vatPayer && d.items.some((item) => num(item.vat) === 0));
     };
-    const number = (item, key) => (value, el) => {
+    const itemsHint = h('p', { class: 'field-hint is-warn', id: 'items-hint' }, 'Červeně označenému číslu nerozumím. Piš ho třeba jako 1 250,50.');
+    const numberHint = (value) => (isAmount(value) ? '' : 'Tomuhle číslu nerozumím.');
+    const syncItemsHint = () => {
+      itemsHint.hidden = d.items.every((item) => isAmount(item.qty) && isAmount(item.price));
+    };
+    const number = (item, key, getField) => (value) => {
       item[key] = value;
-      if (isAmount(value)) el.removeAttribute('aria-invalid');
-      else el.setAttribute('aria-invalid', 'true');
+      getField().setHint(numberHint(value), 'warn');
+      syncItemsHint();
       changed();
     };
     function buildItems(focusId) {
@@ -354,11 +388,15 @@ export function invoiceView({ onTotals }) {
         ...d.items.map((item, i) => {
           const n = i + 1;
           const label = (name) => (n > 1 ? `${name}, položka ${n}` : null);
+          const qtyField = field({ id: `item-${n}-qty`, label: 'Množství', ariaLabel: label('Množství'), value: item.qty, inputmode: 'decimal', mono: true, maxlength: 14, oninput: number(item, 'qty', () => qtyField) });
+          const priceField = field({ id: `item-${n}-price`, label: s.vatPayer ? 'Cena bez DPH' : 'Cena za jedn.', ariaLabel: label('Cena za jednotku'), value: item.price, inputmode: 'decimal', mono: true, maxlength: 16, oninput: number(item, 'price', () => priceField) });
+          qtyField.setHint(numberHint(item.qty), 'warn');
+          priceField.setHint(numberHint(item.price), 'warn');
           const row = h('div', { class: 'item' + (s.vatPayer ? ' has-vat' : '') },
-            field({ id: `item-${n}-desc`, label: 'Popis', ariaLabel: label('Popis'), value: item.desc, maxlength: 2000, oninput: set(item, 'desc') }),
-            field({ id: `item-${n}-qty`, label: 'Množství', ariaLabel: label('Množství'), value: item.qty, inputmode: 'decimal', mono: true, maxlength: 14, oninput: number(item, 'qty') }),
+            field({ id: `item-${n}-desc`, label: 'Popis', ariaLabel: label('Popis'), value: item.desc, maxlength: 4000, oninput: set(item, 'desc') }),
+            qtyField,
             field({ id: `item-${n}-unit`, label: 'Jedn.', ariaLabel: label('Jednotka'), value: item.unit, placeholder: 'ks', maxlength: 8, oninput: set(item, 'unit') }),
-            field({ id: `item-${n}-price`, label: s.vatPayer ? 'Cena bez DPH' : 'Cena za jedn.', ariaLabel: label('Cena za jednotku'), value: item.price, inputmode: 'decimal', mono: true, maxlength: 16, oninput: number(item, 'price') }),
+            priceField,
             s.vatPayer && h('label', { class: 'field', for: `item-${n}-vat` }, h('span', { class: 'field-label' }, 'DPH'),
               h('select', { id: `item-${n}-vat`, 'aria-label': label('Sazba DPH'), onchange: (e) => { item.vat = Number(e.target.value); syncZero(); changed(); } },
                 VAT_RATES.map((rate) => h('option', { value: rate, selected: num(item.vat) === rate }, `${rate} %`)))),
@@ -369,13 +407,11 @@ export function invoiceView({ onTotals }) {
                 changed();
               } }, '×')
           );
-          for (const key of ['qty', 'price']) {
-            if (!isAmount(item[key])) row.querySelector(`#item-${n}-${key}`).setAttribute('aria-invalid', 'true');
-          }
           return row;
         })
       );
       syncZero();
+      syncItemsHint();
       if (focusId) {
         const target = itemsBody.querySelector('#' + focusId);
         if (target) target.focus();
@@ -385,8 +421,13 @@ export function invoiceView({ onTotals }) {
     const items = h('fieldset', { class: 'card' },
       h('legend', null, 'Položky'),
       itemsBody,
+      itemsHint,
       h('div', { class: 'items-foot' },
         h('button', { type: 'button', class: 'btn btn-small', onclick: () => {
+          if (d.items.length >= MAX_ITEMS) {
+            toast(`Faktura může mít nejvýš ${MAX_ITEMS} položek.`, 'error');
+            return;
+          }
           d.items.push(emptyItem(d.items.length ? num(d.items[d.items.length - 1].vat) : 21));
           buildItems(`item-${d.items.length}-desc`);
           changed();
@@ -402,7 +443,7 @@ export function invoiceView({ onTotals }) {
     const problemsBox = h('div', { class: 'problems', role: 'alert' });
     const warningsBox = h('div', { class: 'warnings' });
     const choiceBox = h('div', { class: 'notice' });
-    const status = h('p', { class: 'save-status', role: 'status' }, stored && !state.dirty ? `Faktura ${stored.number} je uložená v přehledu.` : '');
+    const status = h('p', { class: 'save-status', role: 'status' }, !stored ? '' : state.dirty ? 'Máš neuložené změny.' : `Faktura ${stored.number} je uložená v přehledu.`);
     problemsBox.hidden = warningsBox.hidden = choiceBox.hidden = true;
     let problemsShown = false;
 
@@ -420,7 +461,7 @@ export function invoiceView({ onTotals }) {
     recheck = () => {
       if (problemsShown) check(false);
       choiceBox.hidden = true;
-      if (status.textContent && !status.classList.contains('is-error')) status.textContent = storedDraftInvoice() ? 'Máš neuložené změny.' : '';
+      if (!status.classList.contains('is-error')) status.textContent = storedDraftInvoice() ? 'Máš neuložené změny.' : '';
     };
 
     async function save({ pdf, asNew = false, button }) {
@@ -439,6 +480,7 @@ export function invoiceView({ onTotals }) {
       }
       choiceBox.hidden = true;
       const result = saveDraftAsInvoice({ asNew });
+      banner.hidden = true; // po prvním uložení už nejde o ukázku
       editing.hidden = false;
       editing.querySelector('strong').textContent = `Upravuješ uloženou fakturu ${result.invoice.number}.`;
       if (result.ok) {

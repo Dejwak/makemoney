@@ -2,7 +2,7 @@
 
 import { h, field, toast } from '../ui.js';
 import { state, persist, visibleInvoices } from '../lib/store.js';
-import { daysBetween, formatDate, formatMoney, invoiceStatus, invoiceTotals, statutoryInterestRate, todayIso } from '../lib/calc.js';
+import { daysBetween, formatDate, formatMoney, invoiceStatus, invoiceTotals, isAmount, num, statutoryInterestRate, todayIso } from '../lib/calc.js';
 import { TONES, buildReminder, suggestTone, dayWord } from '../lib/reminders.js';
 import { copyText } from '../lib/save.js';
 
@@ -76,6 +76,8 @@ export function remindersView() {
         + (statutory == null ? ' Pro tohle pololetí sazbu neznám, repo sazbu najdeš na cnb.cz.' : ` Pro tuhle fakturu vychází ${statutoryText} % ročně.`)
         + ' Jinou sazbu použij jen tehdy, máte-li ji sjednanou ve smlouvě.',
       onchange: (v) => { state.reminder.interestRate = v.trim(); persist(); render(); } });
+    const rate = state.reminder.interestRate;
+    if (rate !== '' && !(isAmount(rate) && num(rate) > 0 && num(rate) <= 1000)) interest.setHint('Sazbě nerozumím. Piš ji třeba jako 11,75.', 'warn');
     const useStatutory = h('button', { type: 'button', class: 'btn btn-small', onclick: () => { state.reminder.interestRate = statutoryText; persist(); render(); } }, `Použít zákonných ${statutoryText} %`);
     useStatutory.hidden = statutory == null || state.reminder.interestRate === statutoryText;
     const finalBox = h('div', { class: 'final-box' }, interest, useStatutory,
@@ -100,7 +102,7 @@ export function remindersView() {
             h('div', null, h('dt', null, 'Splatnost'), h('dd', { class: 'mono' }, formatDate(invoice.due))),
             h('div', null, h('dt', null, 'Po splatnosti'), h('dd', { class: 'mono' }, overdue ? `${daysLate} ${dayWord(daysLate)}` : 'zatím ne')),
             h('div', null, h('dt', null, 'Dlužná částka'), h('dd', { class: 'mono' }, formatMoney(invoiceTotals(invoice).total, invoice.currency))),
-            reminder.interest > 0 && h('div', null, h('dt', null, 'Úrok k dnešku'), h('dd', { class: 'mono' }, formatMoney(reminder.interest, invoice.currency)))
+            activeTone === 'final' && reminder.interest > 0 && h('div', null, h('dt', null, 'Úrok k dnešku'), h('dd', { class: 'mono' }, formatMoney(reminder.interest, invoice.currency)))
           ),
           h('span', { class: 'field-label' }, 'Tón'),
           tones,
@@ -120,8 +122,8 @@ export function remindersView() {
             h('button', { type: 'button', class: 'btn', disabled: example, onclick: () => {
               if (!Array.isArray(invoice.reminders)) invoice.reminders = [];
               invoice.reminders.push({ date: todayIso(), tone: activeTone });
-              persist(true);
-              toast('Zapsáno. V přehledu uvidíš, kdy upomínka naposledy odešla.');
+              if (persist(true)) toast('Zapsáno. V přehledu uvidíš, kdy upomínka naposledy odešla.');
+              else toast('Zapsáno, ale prohlížeč změnu neuložil. Po zavření stránky zmizí.', 'error');
               render();
             } }, 'Zapsat jako odeslanou')),
           sentBefore.length > 0 && h('p', { class: 'fine' }, `Upomínka už odešla ${sentBefore.length}×, naposledy ${formatDate(sentBefore[sentBefore.length - 1].date)}.`)

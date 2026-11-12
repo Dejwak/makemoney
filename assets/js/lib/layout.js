@@ -95,6 +95,14 @@ export function fitLine(text, font, size, maxWidth, measure) {
   return { s, z };
 }
 
+/** Nejvýš `max` řádků; když se text nevejde, poslední řádek to přizná výpustkou. */
+function capLines(lines, max) {
+  if (lines.length <= max) return lines;
+  const kept = lines.slice(0, max);
+  kept[max - 1] = kept[max - 1].replace(/.{0,2}$/, '…');
+  return kept;
+}
+
 function addressLines(party) {
   const cityLine = [party.zip, party.city].filter(Boolean).join(' ');
   return [party.street, cityLine].filter(Boolean);
@@ -179,13 +187,13 @@ export function layoutInvoice(invoice, opts) {
     let yy = y;
     text(label, x, yy, 'bold', 7.5, MUTED);
     yy += 16;
-    for (const l of wrapText(p.name || '', 'bold', 11, colW, measure).slice(0, 4)) {
+    for (const l of capLines(wrapText(p.name || '', 'bold', 11, colW, measure), 4)) {
       text(l, x, yy, 'bold', 11);
       yy += 14;
     }
     yy += 1;
     for (const l of addressLines(p)) {
-      for (const wl of wrapText(l, 'sans', 9.5, colW, measure).slice(0, 3)) {
+      for (const wl of capLines(wrapText(l, 'sans', 9.5, colW, measure), 3)) {
         text(wl, x, yy);
         yy += 13;
       }
@@ -199,11 +207,11 @@ export function layoutInvoice(invoice, opts) {
       yy += 13;
     }
     if (isSupplier) {
-      const notes = [];
-      if (p.register) notes.push(p.register);
+      // Prohlášení o neplátcovství má vlastní řádek, aby ho dlouhý zápis v rejstříku nevytlačil.
+      const notes = capLines(wrapText(p.register || '', 'sans', 8, colW, measure).filter(Boolean), 4);
       if (!p.vatPayer) notes.push(L.nonPayer);
       if (notes.length) yy += 4;
-      for (const l of wrapText(notes.join(' '), 'sans', 8, colW, measure).slice(0, 5)) {
+      for (const l of notes) {
         text(l, x, yy, 'sans', 8, MUTED);
         yy += 11;
       }
@@ -301,7 +309,7 @@ export function layoutInvoice(invoice, opts) {
     }
   }
   if (totals.zeroRated && String(invoice.zeroVatNote || '').trim()) extra.push(String(invoice.zeroVatNote).trim());
-  const extraLines = extra.flatMap((e) => wrapText(e, 'sans', 8.5, CW, measure)).slice(0, 8);
+  const extraLines = capLines(extra.flatMap((e) => wrapText(e, 'sans', 8.5, CW, measure)), 8);
 
   const sumsH = sumRows.length * 15 + 40 + extraLines.length * 12;
   if (y + sumsH > bottom) continuePage();

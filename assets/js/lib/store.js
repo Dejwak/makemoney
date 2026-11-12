@@ -135,6 +135,13 @@ export function exampleProfile() {
   };
 }
 
+/** Které údaje dodavatele jsou pořád ty ukázkové (účet, IČO, e-mail). */
+export function exampleSupplierFields(supplier) {
+  const example = exampleProfile();
+  const labels = { account: 'číslo účtu', ico: 'IČO', email: 'e-mail' };
+  return Object.keys(labels).filter((key) => supplier && String(supplier[key] || '').trim() === example[key]).map((key) => labels[key]);
+}
+
 export function exampleDraft() {
   const draft = newDraft(exampleProfile(), []);
   draft.client = {
@@ -187,7 +194,7 @@ export function normalizeState(raw) {
   if (!isObject(raw)) {
     return {
       version: 1, demo: true, dirty: false,
-      profile: { ...exampleProfile(), logo: null, color: '' },
+      profile: { ...emptyProfile(), logo: null, color: '' },
       invoices: [], issuedNumbers: [], draft: exampleDraft(),
       pro: { unlocked: false, order: '' },
       rate: { ...RATE_DEFAULTS }, qr: { ...QR_DEFAULTS }, reminder: { interestRate: '' },
@@ -206,7 +213,7 @@ export function normalizeState(raw) {
   for (const source of logoSources) {
     if (!isObject(source)) continue;
     logo = logo || cleanLogo(source.logo);
-    if (!color && /^#[0-9a-f]{6}$/i.test(source.color || '')) color = source.color;
+    if (!color && typeof source.color === 'string' && /^#[0-9a-f]{6}$/i.test(source.color)) color = source.color;
   }
   const profile = { ...cleanSupplier(raw.profile), logo, color };
   const issuedNumbers = (Array.isArray(raw.issuedNumbers) ? raw.issuedNumbers : []).map((n) => text(n, 32)).filter(Boolean).slice(0, 500);
@@ -218,10 +225,12 @@ export function normalizeState(raw) {
   for (const key of Object.keys(RATE_DEFAULTS)) {
     if (isObject(raw.rate) && raw.rate[key] != null) rate[key] = text(raw.rate[key], 20);
   }
+  // Starší data příznak rozepsanosti neměla: koncept s odběratelem nebo cenou ber jako rozepsaný.
+  const edited = !draft.id && (draft.client.name.trim() !== '' || draft.items.some((item) => String(item.price).trim() !== ''));
   return {
     version: 1,
     demo: !!raw.demo && invoices.length === 0,
-    dirty: !!raw.dirty,
+    dirty: raw.dirty === undefined ? edited && !raw.demo : !!raw.dirty,
     profile,
     invoices,
     issuedNumbers,
@@ -247,15 +256,24 @@ function applyState(next) {
   }
 }
 
-function read() {
+let lastRaw = null; // co je podle nás v úložišti; podle toho se pozná změna z jiné záložky
+
+function parseStored(raw) {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
+    const data = raw ? JSON.parse(raw) : null;
     return isObject(data) && data.version === 1 ? data : null;
   } catch {
     return null;
   }
+}
+
+function read() {
+  try {
+    lastRaw = localStorage.getItem(KEY);
+  } catch {
+    lastRaw = null;
+  }
+  return parseStored(lastRaw);
 }
 
 /** Koncept, na který nikdo nesáhl, se má tvářit jako dnešní (datum i číslo). */
@@ -286,7 +304,9 @@ function write() {
   if (timer) clearTimeout(timer);
   timer = null;
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    const raw = JSON.stringify(state);
+    localStorage.setItem(KEY, raw);
+    lastRaw = raw;
     return true;
   } catch {
     if (failureHandler) failureHandler();
@@ -308,25 +328,59 @@ export function touchDraft() {
   persist();
 }
 
+/**
+ * Převezme data, která do úložiště zapsala jiná záložka (raw = nový obsah, null = smazáno).
+ * Rozepsaná faktura téhle záložky má přednost; sama nic nezapisuje, aby se záložky nepřetahovaly.
+ * @returns {boolean} true, když se něco změnilo
+ */
+export function syncFromStorage(raw) {
+  if (raw === lastRaw) return false;
+  const busy = state.dirty || timer !== null;
+  if (raw === null) {
+    // Jinde proběhlo „Začít s čistými daty“. Kdo tu má rozepsáno, o práci nepřijde.
+    if (busy) return false;
+    lastRaw = null;
+    applyState(normalizeState(null));
+  } else {
+    const data = parseStored(raw);
+    if (!data) return false;
+    lastRaw = raw;
+    const next = normalizeState(data);
+    if (busy) {
+      next.draft = state.draft;
+      next.dirty = state.dirty;
+      if (state.draft.id && !next.invoices.some((inv) => inv.id === state.draft.id)) state.draft.id = null;
+    }
+    applyState(next);
+  }
+  if (changeHandler) changeHandler();
+  return true;
+}
+
 if (typeof addEventListener === 'function') {
   // Rozepsané změny zapiš i při zavření nebo přepnutí stránky.
   addEventListener('pagehide', () => {
     if (timer) write();
   });
-  // Jiná záložka uložila data: převezmi je, ať si záložky navzájem nepřepisují faktury.
   addEventListener('storage', (event) => {
-    if (event.key !== KEY || !event.newValue) return;
-    try {
-      const data = JSON.parse(event.newValue);
-      if (!isObject(data) || data.version !== 1) return;
-      if (timer) clearTimeout(timer);
-      timer = null;
-      applyState(normalizeState(data));
-      if (changeHandler) changeHandler();
-    } catch {
-      /* cizí nebo poškozená data nech být */
-    }
+    if (event.key === KEY) syncFromStorage(event.newValue);
   });
+  // Záložka, která byla uspaná, mohla změny z jiných záložek zmeškat.
+  const catchUp = () => {
+    try {
+      syncFromStorage(localStorage.getItem(KEY));
+    } catch {
+      /* úložiště není dostupné */
+    }
+  };
+  addEventListener('pageshow', (event) => {
+    if (event.persisted) catchUp();
+  });
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) catchUp();
+    });
+  }
 }
 
 // ---- operace ------------------------------------------------------------
@@ -351,6 +405,7 @@ export function saveDraftAsInvoice({ asNew = false } = {}) {
   const draft = state.draft;
   const stored = asNew ? null : storedDraftInvoice();
   const copy = cleanInvoice({ ...JSON.parse(JSON.stringify(draft)), id: stored ? stored.id : uid() });
+  if (!copy) return { ok: false, invoice: draft, created: false }; // bez čísla není co uložit
   if (stored) {
     // Co se o faktuře stalo mimo editor (zaplacení, upomínky), se přepisem nesmí ztratit.
     copy.paidAt = stored.paidAt;
@@ -366,6 +421,7 @@ export function saveDraftAsInvoice({ asNew = false } = {}) {
     Object.assign(state.profile, cleanSupplier(draft.supplier));
   }
   draft.id = copy.id;
+  draft.paidAt = copy.paidAt;
   if (!state.issuedNumbers.includes(copy.number)) state.issuedNumbers = [copy.number, ...state.issuedNumbers].slice(0, 500);
   state.demo = false;
   state.dirty = false;
@@ -398,11 +454,19 @@ export function duplicateAsDraft(invoice) {
 
 export function deleteInvoice(id) {
   state.invoices = state.invoices.filter((inv) => inv.id !== id);
-  if (state.draft.id === id) state.draft.id = null;
+  if (state.draft.id === id) {
+    state.draft.id = null;
+    state.draft.paidAt = null;
+  }
   return persist(true);
 }
 
+/** Zahodí ukázkovou fakturu. Kdo už má vlastní údaje, tomu zůstanou. */
 export function clearExample() {
+  if (!state.demo) {
+    startNewDraft();
+    return;
+  }
   state.demo = false;
   state.dirty = false;
   Object.assign(state.profile, emptyProfile());

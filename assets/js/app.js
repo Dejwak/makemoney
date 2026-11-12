@@ -1,6 +1,6 @@
 import { h, toast, confirmButton } from './ui.js';
 import { formatDate } from './lib/calc.js';
-import { onStorageFailure, onExternalChange, storageWorks, exportBackup, resetAll } from './lib/store.js';
+import { state, onStorageFailure, onExternalChange, storageWorks, exportBackup, resetAll } from './lib/store.js';
 import { saveFile, saveErrorMessage } from './lib/save.js';
 import { invoiceView } from './views/invoice.js';
 import { overviewView } from './views/overview.js';
@@ -176,7 +176,8 @@ if (!storageWorks()) storageNote();
 let stale = false;
 const typing = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
 onExternalChange(() => {
-  if (typing() && !document.hidden) stale = true;
+  // Když tahle záložka nic rozepsaného nemá, přišel jí nový koncept a editor se musí překreslit hned.
+  if (typing() && !document.hidden && state.dirty) stale = true;
   else show();
 });
 document.addEventListener('focusout', () => {

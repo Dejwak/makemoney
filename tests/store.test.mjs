@@ -221,3 +221,157 @@ test('kopie faktury dostane nové číslo a dnešní data', async () => {
   assert.notEqual(state.draft.issued, '2026-01-05');
   assert.equal(state.draft.paidAt, null);
 });
+
+test('ukázkový dodavatel se do profilu nedostane a ukázkové hodnoty se poznají', async () => {
+  const { state, store, storage } = await freshStore();
+  assert.equal(state.profile.account, '');
+  assert.equal(state.draft.supplier.account, '19-2000145399/0800');
+  assert.deepEqual(store.exampleSupplierFields(state.draft.supplier), ['číslo účtu', 'IČO', 'e-mail']);
+  assert.deepEqual(store.exampleSupplierFields({ account: '2000145399/0800', ico: '12345679' }), ['IČO']);
+  state.demo = false; // „Skrýt“
+  store.persist(true);
+  assert.equal(JSON.parse(storage.data.get('cinkne:v1')).profile.account, '');
+});
+
+test('po prvním uložení už „začít s prázdnou“ nemaže vlastní údaje', async () => {
+  const { state, store } = await freshStore();
+  fillDraft(state);
+  store.saveDraftAsInvoice();
+  assert.equal(state.profile.name, 'Petr Svoboda');
+  store.clearExample();
+  assert.equal(state.profile.name, 'Petr Svoboda');
+  assert.equal(state.profile.account, '2000145399/0800');
+  assert.equal(state.draft.supplier.name, 'Petr Svoboda');
+  assert.equal(state.draft.id, null);
+});
+
+test('uložení jako nová a smazání nenechá v konceptu cizí stav zaplacení', async () => {
+  const { state, store } = await freshStore();
+  fillDraft(state);
+  store.saveDraftAsInvoice();
+  state.invoices[0].paidAt = '2026-11-12';
+  store.editInvoice(state.invoices[0]);
+  assert.equal(state.draft.paidAt, '2026-11-12');
+  state.draft.number = '20260002';
+  store.saveDraftAsInvoice({ asNew: true });
+  assert.equal(state.draft.paidAt, null);
+  assert.equal(state.invoices[0].paidAt, null);
+  store.editInvoice(state.invoices[1]);
+  store.deleteInvoice(state.invoices[1].id);
+  assert.equal(state.draft.paidAt, null);
+  assert.equal(state.draft.id, null);
+});
+
+test('starší data bez příznaku rozepsanosti o rozepsanou fakturu nepřijdou', async () => {
+  const { store } = await freshStore();
+  const legacy = { version: 1, demo: false, invoices: [], profile: { name: 'X' }, draft: { number: '20260001', issued: '2026-01-05', due: '2026-01-19', supplier: { name: 'X' }, client: { name: 'Rozepsaný klient' }, items: [{ desc: 'a', qty: 1, price: '500' }] } };
+  assert.equal(store.normalizeState(legacy).dirty, true);
+  assert.equal(store.normalizeState({ ...legacy, draft: { ...legacy.draft, client: {}, items: [{}] } }).dirty, false);
+  assert.equal(store.normalizeState({ ...legacy, profile: { color: ['#aabbcc'] } }).profile.color, '');
+});
+
+test('změna z jiné záložky: rozepsaná faktura zůstane, ostatní se převezme', async () => {
+  const storage = fakeStorage();
+  const a = await freshStore(storage);
+  fillDraft(a.state);
+  a.store.saveDraftAsInvoice();
+  const b = await freshStore(storage);
+  let notified = 0;
+  b.store.onExternalChange(() => { notified += 1; });
+  // B má rozepsáno, A mezitím uloží další fakturu
+  b.store.startNewDraft();
+  b.state.draft.client.name = 'Rozepsáno v B';
+  b.store.touchDraft();
+  const draftB = b.state.draft;
+  a.store.startNewDraft();
+  fillDraft(a.state, { number: '20260002' });
+  a.state.draft.client.name = 'Klient z A';
+  a.store.saveDraftAsInvoice();
+  assert.equal(b.store.syncFromStorage(storage.data.get('cinkne:v1')), true);
+  assert.equal(notified, 1);
+  assert.equal(b.state.invoices.length, 2, 'B vidí fakturu z A');
+  assert.equal(b.state.draft, draftB, 'editor v B dál píše do stejného konceptu');
+  assert.equal(b.state.draft.client.name, 'Rozepsáno v B');
+  assert.equal(b.state.dirty, true);
+  b.store.persist(true);
+  assert.equal(JSON.parse(storage.data.get('cinkne:v1')).invoices.length, 2, 'zápis z B fakturu z A nesmaže');
+  // stejný obsah podruhé nic nedělá, takže se záložky nepřetahují
+  assert.equal(b.store.syncFromStorage(storage.data.get('cinkne:v1')), false);
+  assert.equal(notified, 1);
+});
+
+test('změna z jiné záložky: kdo nic rozepsaného nemá, převezme vše; smazání dat práci nezahodí', async () => {
+  const storage = fakeStorage();
+  const a = await freshStore(storage);
+  fillDraft(a.state);
+  a.store.saveDraftAsInvoice();
+  const b = await freshStore(storage);
+  a.state.draft.note = 'změna v A';
+  a.store.touchDraft();
+  a.store.persist(true);
+  b.store.syncFromStorage(storage.data.get('cinkne:v1'));
+  assert.equal(b.state.draft.note, 'změna v A');
+  // „Začít s čistými daty“ v A: B bez rozepsané práce se vrátí na začátek
+  b.state.dirty = false;
+  assert.equal(b.store.syncFromStorage(null), true);
+  assert.equal(b.state.invoices.length, 0);
+  assert.equal(b.state.demo, true);
+  // ale záložka s rozepsanou fakturou si data nechá
+  const c = await freshStore(fakeStorage());
+  fillDraft(c.state);
+  c.store.touchDraft();
+  c.store.persist(true);
+  assert.equal(c.store.syncFromStorage(null), false);
+  assert.equal(c.state.draft.client.name, 'Klient A');
+});
+
+test('kontrola faktury: co brání uložení a na co jen upozorní', async () => {
+  const { state } = await freshStore();
+  const { validateInvoice } = await import('../assets/js/views/invoice.js');
+  assert.match(validateInvoice(state.draft).problems.join(' '), /ukázkové hodnoty \(číslo účtu, IČO, e-mail\)/);
+  fillDraft(state);
+  Object.assign(state.draft.supplier, { ico: '', email: '' });
+  let result = validateInvoice(state.draft);
+  assert.deepEqual(result.problems, []);
+  assert.match(result.warnings.join(' '), /chybí tvoje IČO/);
+  const check = (change) => {
+    const draft = JSON.parse(JSON.stringify(state.draft));
+    change(draft);
+    return validateInvoice(draft, [{ id: 'jina', number: '77' }]).problems.join(' | ');
+  };
+  assert.match(check((d) => { d.number = '77'; }), /už má jiná faktura/);
+  assert.match(check((d) => { d.supplier.street = ''; }), /adresu/);
+  assert.match(check((d) => { d.due = '3850-11-27'; }), /Zkontroluj datum/);
+  assert.match(check((d) => { d.issued = '0202-11-12'; }), /Zkontroluj datum/);
+  assert.match(check((d) => { d.due = '2029-11-27'; }), /dva roky/);
+  assert.match(check((d) => { d.items[0].price = '1.250'; }), /ceně nerozumím/);
+  assert.match(check((d) => { d.supplier.vatPayer = true; }), /DIČ/);
+  assert.match(check((d) => { d.supplier.vatPayer = true; d.supplier.dic = 'CZ1'; d.currency = 'EUR'; }), /kurz/);
+  assert.match(check((d) => { d.supplier.vatPayer = true; d.supplier.dic = 'CZ1'; d.items[0].vat = 0; }), /0 % DPH/);
+  assert.match(check((d) => { d.items = Array.from({ length: 201 }, () => ({ desc: 'a', qty: 1, price: 1 })); }), /nejvýš 200 položek/);
+});
+
+test('CSV: text od uživatele se zneškodní, záporné částky zůstanou čísly', async () => {
+  await freshStore();
+  const { invoicesCsv } = await import('../assets/js/views/overview.js');
+  const csv = invoicesCsv([{
+    number: '-2026/1', vs: '1', issued: '2026-11-12', due: '2026-11-26', currency: 'CZK',
+    supplier: { vatPayer: true }, client: { name: '=HYPERLINK("http://x";"klik")', ico: '@SUM(1)', dic: '' },
+    items: [{ qty: 1, price: -100, vat: 21 }],
+  }]);
+  const row = csv.split('\r\n')[1];
+  assert.ok(row.startsWith("'-2026/1;\"'=HYPERLINK(\"\"http://x\"\";\"\"klik\"\")\";'@SUM(1);"), row);
+  assert.ok(row.includes(';-100,00;-21,00;-121,00;CZK;'), row);
+});
+
+test('odkaz se žádostí o platbu: zakódování a zpět', async () => {
+  await freshStore();
+  const { encodeRequest, decodeRequest } = await import('../assets/js/views/qr.js');
+  const q = { account: '19-2000145399/0800', amount: '450,50', vs: '123', message: 'Půlka za chatu 🏡', name: 'Žaneta' };
+  const encoded = encodeRequest(q);
+  assert.match(encoded, /^[A-Za-z0-9_-]+$/);
+  assert.deepEqual(decodeRequest(encoded), q);
+  assert.equal(decodeRequest('%%%'), null);
+  assert.equal(decodeRequest(Buffer.from('[1,2]').toString('base64')).account, '');
+  assert.equal(decodeRequest(Buffer.from('{"v":"12AB34567890123"}').toString('base64')).vs, '4567890123');
+});

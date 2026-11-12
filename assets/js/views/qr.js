@@ -73,9 +73,10 @@ export function qrView({ request }) {
     }
     const saved = state.qr;
     // Dokud uživatel nezadal vlastní účet, vychází se z profilu; ukázkový účet se nikdy neukládá.
-    isExample = !saved.account && state.demo;
-    const fallback = state.demo ? exampleProfile() : state.profile;
+    const example = exampleProfile();
+    const fallback = state.demo ? example : state.profile;
     q = { ...saved, account: saved.account || fallback.account || '', name: saved.name || fallback.name || '' };
+    isExample = q.account.replace(/\s+/g, '') === example.account;
   }
 
   function clear(message, kind) {
@@ -167,7 +168,7 @@ export function qrView({ request }) {
       q[key] = value;
       state.qr[key] = value;
       if (key === 'account') {
-        isExample = false;
+        isExample = value.replace(/\s+/g, '') === exampleProfile().account;
         // Jméno z ukázky k cizímu účtu nepatří.
         if (state.demo && !state.qr.name) {
           q.name = '';

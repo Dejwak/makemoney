@@ -6,7 +6,7 @@ import { buildSpayd, buildEpc, parseSpayd, spaydText } from '../assets/js/lib/sp
 import { qrMatrix, qrRuns, qrSvg } from '../assets/js/lib/qr.js';
 import {
   parseAmount, num, isAmount, toCents, formatMoney, formatUnitPrice, formatWhole, invoiceTotals, yearTurnover,
-  addDays, daysBetween, formatDate, isIsoDate, nextInvoiceNumber, toVs, isValidIco, invoiceStatus,
+  addDays, daysBetween, formatDate, isIsoDate, isBusinessDate, nextInvoiceNumber, toVs, isValidIco, invoiceStatus,
   hourlyRate, netFromRate, lateInterest, statutoryInterestRate,
 } from '../assets/js/lib/calc.js';
 import { buildReminder, suggestTone, dayWord } from '../assets/js/lib/reminders.js';
@@ -91,6 +91,10 @@ test('SEPA QR pro eura', () => {
   assert.deepEqual(epc.split('\n'), ['BCD', '002', '1', 'SCT', 'GIBACZPX', 'Jana Nováková', 'CZ6508000000192000145399', 'EUR1500.00', '', '', 'Invoice 20260001']);
   assert.throws(() => buildEpc({ iban: 'CZ6508000000192000145399', name: '', amount: 5 }));
   assert.throws(() => buildEpc({ iban: 'CZ6508000000192000145399', name: 'X', amount: 0 }));
+  const long = buildEpc({ iban: 'CZ6508000000192000145399', bic: 'GIBA', name: 'Ž'.repeat(90), amount: 5, remittance: 'ř'.repeat(140) });
+  assert.equal(long.split('\n')[4], '', 'nesmyslný BIC se vynechá');
+  assert.equal([...long.split('\n')[5]].length, 70);
+  assert.ok(new TextEncoder().encode(long).length <= 331, 'nejvýš 331 bajtů');
 });
 
 test('QR matice: čtverec, vyhledávací vzory, diakritika v UTF-8, bezpečný popisek', () => {
@@ -98,7 +102,7 @@ test('QR matice: čtverec, vyhledávací vzory, diakritika v UTF-8, bezpečný p
   assert.ok(m.length >= 21 && m.every((row) => row.length === m.length));
   for (let i = 0; i < 7; i++) assert.ok(m[0][i] && m[6][i] && m[i][0] && m[i][6]);
   assert.equal(qrRuns(m).reduce((s, r) => s + r.len, 0), m.flat().filter(Boolean).length);
-  assert.ok(qrMatrix('Žluťoučký kůň').length >= qrMatrix('Zlutoucky kun').length, 'UTF-8 zabere víc místa než ASCII');
+  assert.ok(qrMatrix('Žluťoučký kůň '.repeat(4)).length > qrMatrix('Zlutoucky kun '.repeat(4)).length, 'UTF-8 zabere víc místa než ASCII');
   assert.ok(!qrSvg(m, { title: '"><script>' }).includes('"><script>'));
 });
 
@@ -112,7 +116,14 @@ test('čísla v českém zápisu', () => {
   assert.equal(parseAmount('12,50 Kč'), 12.5);
   assert.equal(parseAmount('12,5 %'), 12.5);
   assert.equal(parseAmount(''), 0);
-  for (const bad of ['abc', '1e3', '0x10', '1,2,3', '12 kusů']) assert.ok(Number.isNaN(parseAmount(bad)), bad);
+  assert.equal(parseAmount('1.250,-'), 1250);
+  assert.equal(parseAmount('2.500 Kč'), 2500);
+  assert.equal(parseAmount('1.000.000,-'), 1000000);
+  assert.equal(parseAmount('12.345.678,90'), 12345678.9);
+  assert.equal(parseAmount('0.125'), 0.125);
+  assert.equal(parseAmount('1234.5'), 1234.5);
+  for (const bad of ['abc', '1e3', '0x10', '1,2,3', '12 kusů', '+5', '5,']) assert.ok(Number.isNaN(parseAmount(bad)), bad);
+  for (const unclear of ['1.250', '12.500', '1.000.000']) assert.ok(Number.isNaN(parseAmount(unclear)), `${unclear} může být tisíce i desetiny`);
   assert.equal(num('abc'), 0);
   assert.ok(isAmount('1 234,50') && !isAmount('1e3'));
 });
@@ -163,6 +174,9 @@ test('součty faktury: záporný základ je zrcadlem kladného, nesmysl se nepo�
   const odd = invoiceTotals(invoice({ items: [{ qty: '1e308', price: '1e308' }, { qty: 'abc', price: 5 }, null] }));
   assert.equal(odd.total, 0);
   assert.ok(invoiceTotals(invoice({ supplier: { vatPayer: true }, items: [{ qty: 1, price: 10, vat: 0 }] })).zeroRated);
+  const cancelled = invoiceTotals(invoice({ supplier: { vatPayer: true }, items: [{ qty: 1, price: 50, vat: 0 }, { qty: 1, price: -50, vat: 0 }, { qty: 1, price: 100, vat: 21 }] }));
+  assert.deepEqual(cancelled.vat, [{ rate: 21, base: 10000, tax: 2100 }], 'sazba, která se vyruší, v rekapitulaci není');
+  assert.equal(cancelled.zeroRated, false);
 });
 
 test('obrat za rok počítá koruny podle data plnění', () => {
@@ -187,6 +201,7 @@ test('data', () => {
   assert.equal(formatDate('2026-11-05'), '5. 11. 2026');
   assert.equal(formatDate('2026-11-05', 'en'), '5 Nov 2026');
   assert.ok(isIsoDate('2026-02-28') && !isIsoDate('2026-02-30') && !isIsoDate(''));
+  assert.ok(isBusinessDate('2026-11-12') && !isBusinessDate('0202-11-12') && !isBusinessDate('3850-11-27') && !isBusinessDate(''));
 });
 
 test('číslování faktur', () => {
@@ -198,6 +213,7 @@ test('číslování faktur', () => {
   assert.equal(nextInvoiceNumber(['A9', 'A10'], 2026), 'A11');
   assert.equal(nextInvoiceNumber(['099'], 2026), '100');
   assert.equal(nextInvoiceNumber(['bez čísla', '20260003'], 2026), '20260004');
+  assert.equal(nextInvoiceNumber(['26000012'], 2026), '26000013', 'vlastní osmimístná řada pokračuje');
 });
 
 test('VS, IČO, stav faktury', () => {
@@ -294,10 +310,12 @@ test('rozvržení: jedna strana, QR, částka i patička', () => {
   const { pages } = layout(inv);
   assert.equal(pages.length, 1);
   const t = texts(pages);
-  for (const expected of ['FAKTURA', '12 300,00 Kč', 'QR Platba', 'Vystaveno zdarma v aplikaci Cinkne', 'DATUM PLNĚNÍ', '1 ks', '4 h']) {
+  for (const expected of ['FAKTURA', '12 300,00 Kč', 'QR Platba', 'Vystaveno zdarma v aplikaci Cinkne', 'DATUM PLNĚNÍ', '1 ks', '4 h', 'Nejsem plátce DPH.']) {
     assert.ok(t.includes(expected), expected);
   }
-  assert.ok(t.some((s) => s.includes('Nejsem plátce DPH')));
+  const wordy = texts(layout(invoice({ supplier: { name: 'X', account: '19-2000145399/0800', register: 'Zapsáno v rejstříku '.repeat(30) } })).pages);
+  assert.ok(wordy.includes('Nejsem plátce DPH.'), 'dlouhý zápis v rejstříku prohlášení nevytlačí');
+  assert.ok(wordy.some((s) => s.endsWith('…')), 'zkrácený text to přizná');
   assert.equal(pages[0].filter((op) => op.t === 'qr').length, 1);
   for (const op of pages[0]) {
     if (op.t === 'text') assert.ok(op.y > 0 && op.y < PAGE.h && op.x >= 0 && op.x <= PAGE.w, JSON.stringify(op));

@@ -190,6 +190,7 @@ img, svg { max-width: 100%; }
   white-space: nowrap;
 }
 .nav a:hover { color: var(--band-ink); background: var(--band-2); }
+.nav a:focus-visible { outline-offset: -2px; }
 .nav a[aria-current="page"] { color: var(--coin-ink); background: var(--coin); }
 
 /* ---- úvodní pás ------------------------------------------------------- */
@@ -328,6 +329,7 @@ input::placeholder, textarea::placeholder { color: var(--ink-2); opacity: 0.75; 
   cursor: pointer;
 }
 .btn:hover { background: var(--surface-2); }
+.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .btn:active { transform: translateY(1px); }
 .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
@@ -438,7 +440,10 @@ input::placeholder, textarea::placeholder { color: var(--ink-2); opacity: 0.75; 
 .pro-fields { padding-top: 12px; border-top: 1px dashed var(--rule); }
 .pro-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
 .file-label, .color-label { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; font-weight: 600; min-width: 0; }
-.file-label input { max-width: 100%; min-width: 0; font-size: 0.8125rem; }
+.file-label { flex: 1 1 180px; }
+.file-label input { width: 100%; max-width: 100%; min-width: 0; font-size: 0.8125rem; }
+.item .field-hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#items-hint { margin-top: 10px; }
 input[type="color"] { width: 44px; height: 32px; padding: 2px; border: 1px solid var(--field-border); border-radius: 4px; background: var(--surface-2); }
 
 .actions { display: grid; gap: 12px; }
@@ -495,6 +500,7 @@ input[type="color"] { width: 44px; height: 32px; padding: 2px; border: 1px solid
 .row-main { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.3fr); gap: 6px 18px; align-items: center; }
 .row-who { display: grid; min-width: 0; }
 .row-who strong { overflow-wrap: anywhere; }
+.row-amount { min-width: 0; overflow-wrap: anywhere; }
 .row-number { font-size: 0.8125rem; color: var(--ink-2); }
 .row-amount { font-size: 1.125rem; font-weight: 600; text-align: right; }
 .row-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 10px; }

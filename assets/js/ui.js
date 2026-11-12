@@ -73,11 +73,13 @@ export function toast(message, kind = '') {
 /** Tlačítko, které napoprvé jen požádá o potvrzení (confirm() v rámci stránky). */
 export function confirmButton(label, confirmLabel, onConfirm, cls = 'btn btn-ghost btn-small') {
   let armed = false;
+  let armedAt = 0;
   let timer = null;
   const btn = h('button', { type: 'button', class: cls }, label);
   btn.addEventListener('click', () => {
     if (!armed) {
       armed = true;
+      armedAt = Date.now();
       btn.textContent = confirmLabel;
       btn.classList.add('is-danger');
       timer = setTimeout(() => {
@@ -87,6 +89,7 @@ export function confirmButton(label, confirmLabel, onConfirm, cls = 'btn btn-gho
       }, 4000);
       return;
     }
+    if (Date.now() - armedAt < 500) return; // dvojklik není potvrzení
     clearTimeout(timer);
     onConfirm();
   });

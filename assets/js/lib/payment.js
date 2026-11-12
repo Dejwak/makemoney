@@ -6,7 +6,7 @@ import { invoiceTotals } from './calc.js';
 /**
  * Platební údaje faktury včetně QR kódu.
  * Faktura v Kč na český účet dostane QR Platbu, faktura v eurech SEPA QR.
- * `reason` říká, proč kód chybí: 'account' | 'empty' | 'limit' | 'foreign' | 'name'.
+ * `reason` říká, proč kód chybí: 'account' | 'empty' | 'limit' | 'limitEur' | 'foreign' | 'name'.
  */
 export function invoicePayment(invoice) {
   const supplier = invoice.supplier || {};
@@ -34,7 +34,7 @@ export function invoicePayment(invoice) {
     }
     out.matrix = qrMatrix(out.code);
   } catch {
-    return { ...out, kind: null, code: null, matrix: null, reason: String(supplier.name || '').trim() ? 'limit' : 'name' };
+    return { ...out, kind: null, code: null, matrix: null, reason: !String(supplier.name || '').trim() ? 'name' : invoice.currency === 'EUR' ? 'limitEur' : 'limit' };
   }
   return out;
 }

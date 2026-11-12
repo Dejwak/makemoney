@@ -17,6 +17,7 @@ export function rateView() {
   const facts = h('dl', { class: 'facts' });
   const compare = h('p', { class: 'rate-compare', role: 'status' });
   const formSlot = h('div');
+  const clampNote = h('p', { class: 'fine warn-text' });
 
   function update() {
     const r = state.rate;
@@ -45,12 +46,26 @@ export function rateView() {
       compare.className = 'rate-compare ' + (gap > 0 ? 'is-warn' : 'is-ok');
     }
     compare.hidden = !compare.textContent;
+    // Když výpočet některý údaj ořízne, řekni to.
+    const limits = [];
+    if (num(r.taxPct) > 90) limits.push('daně a pojištění nejvýš 90 %');
+    if (num(r.hoursPerWeek) > 168) limits.push('týden má 168 hodin');
+    if (num(r.weeksOff) > 52) limits.push('rok má 52 týdnů');
+    if (num(r.billablePct) > 100) limits.push('fakturovatelných může být nejvýš 100 %');
+    clampNote.textContent = limits.length ? `Počítám s tím, že ${limits.join(', ')}.` : '';
+    clampNote.hidden = !limits.length;
   }
 
   function buildForm() {
     const r = state.rate;
     const input = (key, label, opts = {}) => field({ id: 'rate-' + key, label, value: r[key], mono: true, inputmode: 'decimal', maxlength: 12,
-      oninput: (v) => { state.rate[key] = v; persist(); update(); }, ...opts });
+      oninput: (v, el) => {
+        state.rate[key] = v;
+        if (isAmount(v) && num(v) >= 0) el.removeAttribute('aria-invalid');
+        else el.setAttribute('aria-invalid', 'true');
+        persist();
+        update();
+      }, ...opts });
     const tax = input('taxPct', 'Daně a pojištění (% z tržeb)', { wide: true,
       hint: 'Tvůj odhad. Orientačně pro rok 2026: paušální daň v 1. pásmu asi 12 %, výdajový paušál 60 % asi 14 %, paušál 40 % asi 20 %, skutečné výdaje i přes 30 %. Přesné číslo ti řekne účetní.' });
     const presets = h('div', { class: 'chips field-wide', role: 'group', 'aria-label': 'Odhad podle způsobu zdanění' },
@@ -82,6 +97,7 @@ export function rateView() {
         h('span', { class: 'field-label' }, 'Minimální hodinová sazba'),
         rateOut,
         compare,
+        clampNote,
         facts,
         h('p', { class: 'fine' }, 'Orientační výpočet bez DPH. Pod tuhle sazbu se nevyplatí jít; cenu podle hodnoty pro klienta si nastav klidně výš.'),
         h('a', { class: 'btn btn-primary', href: '#faktura' }, 'Vystavit fakturu')

@@ -42,10 +42,10 @@ function sumText(invoices) {
   return sumLines(invoices).map((line) => h('span', { class: 'tile-line' }, line));
 }
 
-/** Buňka CSV: uvozovky kolem oddělovačů a zneškodnění vzorců (=, +, -, @) pro tabulkové procesory. */
-function csvCell(value) {
+/** Buňka CSV. Text od uživatele se zneškodní, aby ho tabulkový procesor nevzal jako vzorec (=, +, -, @). */
+function csvCell(value, userText = true) {
   let s = String(value ?? '');
-  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  if (userText && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
@@ -54,8 +54,11 @@ export function invoicesCsv(invoices) {
   const amount = (cents) => (cents / 100).toFixed(2).replace('.', ',');
   const rows = invoices.map((inv) => {
     const t = invoiceTotals(inv);
-    return [inv.number, inv.client?.name, inv.client?.ico, inv.client?.dic, inv.issued, inv.duzp || inv.issued, inv.due, inv.paidAt || '',
-      amount(t.base), amount(t.tax), amount(t.total), inv.currency || 'CZK', inv.vs].map(csvCell);
+    const texts = [inv.number, inv.client?.name, inv.client?.ico, inv.client?.dic].map((v) => csvCell(v));
+    const dates = [inv.issued, inv.duzp || inv.issued, inv.due, inv.paidAt || ''].map((v) => csvCell(v));
+    // Částky počítá aplikace sama; záporná částka (sleva) je číslo, ne vzorec.
+    const numbers = [amount(t.base), amount(t.tax), amount(t.total)].map((v) => csvCell(v, false));
+    return [...texts, ...dates, ...numbers, csvCell(inv.currency || 'CZK'), csvCell(inv.vs)];
   });
   return '\ufeff' + [head, ...rows].map((r) => r.join(';')).join('\r\n');
 }
@@ -145,15 +148,29 @@ export function overviewView({ go }) {
       const pdfBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-small', onclick: () => downloadInvoicePdf(inv, pdfBtn) }, 'PDF');
       const buttons = [
         status === 'paid'
-          ? h('button', { type: 'button', class: 'btn btn-ghost btn-small', onclick: () => { inv.paidAt = null; persist(true); render(); } }, 'Vrátit mezi nezaplacené')
-          : h('button', { type: 'button', class: 'btn btn-small btn-paid', onclick: () => {
-              inv.paidAt = todayIso();
+          ? h('button', { type: 'button', class: 'btn btn-ghost btn-small', onclick: () => {
+              inv.paidAt = null;
               persist(true);
-              chime();
               render();
               const fresh = [...root.querySelectorAll('.invoice-row')].find((el) => el.dataset.id === inv.id);
-              if (fresh) fresh.classList.add('just-paid');
-              toast(`Cink! ${formatMoney(totals.total, inv.currency)} je doma.`);
+              if (fresh) fresh.querySelector('.row-actions button')?.focus();
+            } }, 'Vrátit mezi nezaplacené')
+          : h('button', { type: 'button', class: 'btn btn-small btn-paid', onclick: () => {
+              inv.paidAt = todayIso();
+              const saved = persist(true);
+              render();
+              const fresh = [...root.querySelectorAll('.invoice-row')].find((el) => el.dataset.id === inv.id);
+              if (fresh) {
+                fresh.classList.add('just-paid');
+                const next = fresh.querySelector('.row-actions button');
+                if (next) next.focus();
+              }
+              if (saved) {
+                chime();
+                toast(`Cink! ${formatMoney(totals.total, inv.currency)} je doma.`);
+              } else {
+                toast('Označeno, ale prohlížeč změnu neuložil. Po zavření stránky zmizí.', 'error');
+              }
             } }, 'Označit jako zaplacenou'),
         status !== 'paid' && h('button', { type: 'button', class: 'btn btn-ghost btn-small', onclick: () => go('upominky', { invoiceId: inv.id }) }, 'Upomínka'),
         pdfBtn,
@@ -162,6 +179,7 @@ export function overviewView({ go }) {
         confirmButton('Smazat', 'Opravdu smazat?', () => {
           deleteInvoice(inv.id);
           render();
+          (root.querySelector('.invoice-row .row-actions button') || root.querySelector('.list-head .btn'))?.focus();
         }),
       ];
       actions.append(...buttons.filter(Boolean));

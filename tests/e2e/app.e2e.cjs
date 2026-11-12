@@ -113,8 +113,8 @@ const PAID_CONFIG = `export default {
     await page.fill('#sup-name', 'Petr Svoboda');
     await page.fill('#sup-street', 'Dlouhá 1');
     await page.fill('#sup-city', 'Praha');
-    await page.fill('#sup-ico', '12345679');
-    await page.fill('#sup-account', '19-2000145399/0800');
+    await page.fill('#sup-ico', '27074358');
+    await page.fill('#sup-account', '2000145399/0800');
     await page.fill('#cli-name', client);
     await page.fill('#item-1-desc', 'Konzultace');
     await page.fill('#item-1-qty', qty);
@@ -155,7 +155,7 @@ const PAID_CONFIG = `export default {
     await page.fill('#sup-account', '123/0100x');
     await statusHas(page, 'QR kód na faktuře nebude');
     assert((await page.textContent('#sup-account-hint')).includes('nesedí'), 'neplatný účet má dostat nápovědu');
-    await page.fill('#sup-account', '19-2000145399/0800');
+    await page.fill('#sup-account', '2000145399/0800');
     await statusHas(page, 'QR Platba je na faktuře');
     await page.fill('#item-1-price', '1.234,50');
     await totalIs(page, '3 086,25 Kč');
@@ -167,7 +167,7 @@ const PAID_CONFIG = `export default {
     assert((await page.textContent('.problems')).includes('ceně nerozumím'), 'nesrozumitelná cena brání uložení');
     await page.fill('#item-1-price', '1 234,50');
     const spayd = await draftSpayd(page);
-    assert(/^SPD\*1\.0\*ACC:CZ6508000000192000145399\*AM:3086\.25\*CC:CZK\*MSG:FAKTURA \d+\*RN:PETR SVOBODA\*X-VS:\d+$/.test(spayd), 'SPAYD: ' + spayd);
+    assert(/^SPD\*1\.0\*ACC:CZ7908000000002000145399\*AM:3086\.25\*CC:CZK\*MSG:FAKTURA \d+\*RN:PETR SVOBODA\*X-VS:\d+$/.test(spayd), 'SPAYD: ' + spayd);
   });
 
   await step('plátce DPH: DIČ, dvě sazby, důvod nulové daně', async () => {
@@ -266,6 +266,9 @@ const PAID_CONFIG = `export default {
     assert((await stateOf(page)).draft.client.name === 'Třetí', 'první klepnutí nesmí nic zahodit');
     const row = page.locator('.invoice-row', { hasText: 'Druhý klient' });
     await row.locator('text=Kopie').click();
+    await row.locator('text=Zahodit rozepsanou fakturu?').dblclick();
+    assert(await page.isVisible('.overview-view'), 'dvojklik nesmí platit jako potvrzení');
+    await page.waitForTimeout(600);
     await row.locator('text=Zahodit rozepsanou fakturu?').click();
     await page.waitForSelector('#cli-name');
     equal(await page.inputValue('#cli-name'), 'Druhý klient', 'kopie má převzít odběratele');
@@ -274,8 +277,11 @@ const PAID_CONFIG = `export default {
     await go(page, 'prehled');
     equal(await page.locator('.invoice-row').count(), 3, 'počet faktur po kopii');
     const first = page.locator('.invoice-row').first();
-    await first.locator('text=Smazat').click();
+    await first.locator('text=Smazat').dblclick();
+    equal(await page.locator('.invoice-row').count(), 3, 'dvojklik na Smazat nesmí mazat');
+    await page.waitForTimeout(600);
     await first.locator('text=Opravdu smazat?').click();
+    await eventually(async () => (await page.evaluate(() => document.activeElement?.tagName)) === 'BUTTON', 'po smazání má fokus zůstat na tlačítku');
     equal(await page.locator('.invoice-row').count(), 2, 'počet faktur po smazání');
     await page.click('text=+ Nová faktura');
     await page.waitForSelector('#inv-number');
@@ -301,7 +307,7 @@ const PAID_CONFIG = `export default {
     await page.waitForSelector('#rem-subject');
     assert((await page.inputValue('#rem-subject')).includes('Poslední výzva'), 'tón podle počtu dní');
     const body = await page.inputValue('#rem-body');
-    assert(body.includes('3 086,25 Kč') && body.includes('19-2000145399/0800') && body.includes('dosud neeviduji'), 'text upomínky');
+    assert(body.includes('3 086,25 Kč') && body.includes('2000145399/0800') && body.includes('dosud neeviduji'), 'text upomínky');
     assert(!/\b(ty|tvůj|tvoje|tobě)\b/i.test(body), 'upomínka dlužníkovi musí vykat');
     await page.click('text=Použít zákonných 11,75 %');
     await eventually(async () => (await page.inputValue('#rem-body')).includes('11,75 % ročně'), 'úrok v textu');
@@ -495,6 +501,104 @@ const PAID_CONFIG = `export default {
   });
   await page.context().close();
 
+  page = await open();
+  await step('ukázku nejde uložit jako svou; po prvním uložení zmizí a vlastní údaje zůstanou', async () => {
+    await page.click('text=Jen uložit');
+    assert((await page.textContent('.problems')).includes('ukázkové hodnoty'), 'ukázkové údaje dodavatele nesmí projít');
+    await page.fill('#sup-name', 'Petr Svoboda');
+    await page.fill('#sup-ico', '');
+    await page.fill('#sup-email', 'petr@svoboda.test');
+    await page.fill('#sup-account', '2000145399/0800');
+    await saveOnly(page);
+    assert(!(await page.isVisible('.notice-example')), 'po uložení už nemá být vidět upozornění na ukázku');
+    const s1 = await stateOf(page);
+    equal(s1.profile.account, '2000145399/0800', 'vlastní účet v profilu');
+    await go(page, 'qr');
+    equal(await page.inputValue('#qr-account'), '2000145399/0800', 'QR obrazovka nabízí vlastní účet');
+  });
+  await page.context().close();
+
+  page = await open();
+  await step('po skrytí ukázky se ukázkový účet nikde nenabízí jako vlastní', async () => {
+    await page.click('.notice-example >> text=Skrýt');
+    await go(page, 'qr');
+    assert(await page.isVisible('text=Ukázkový účet') || (await page.inputValue('#qr-account')) === '', 'ukázkový účet bez označení');
+    assert(await page.isDisabled('text=Uložit jako PNG'), 'kód s ukázkovým účtem nejde uložit');
+    await eventually(async () => (await stored(page))?.profile?.account === '', 'ukázkový účet není v profilu');
+  });
+
+  await step('ruční psaní data vystavení neodnese splatnost o staletí', async () => {
+    await go(page, 'faktura');
+    await page.focus('#inv-issued');
+    await page.keyboard.type('01052027');
+    await eventually(async () => (await page.inputValue('#inv-issued')) === '2027-01-05' || (await page.inputValue('#inv-issued')), 'datum vystavení má být 5. 1. 2027');
+    equal(await page.inputValue('#inv-due'), '2027-01-19', 'splatnost se má posunout o stejných 14 dní');
+    equal(await page.inputValue('#inv-duzp'), '2027-01-05', 'datum plnění se má posunout s datem vystavení');
+  });
+  await page.context().close();
+
+  page = await open();
+  await step('našeptávač: výběr jiného odběratele nahradí údaje toho předchozího, novější adresa má přednost', async () => {
+    const make = async (number, name, street) => {
+      await page.fill('#inv-number', number);
+      await page.fill('#cli-name', name);
+      await page.fill('#cli-street', street);
+      await saveOnly(page);
+      await page.click('.new-invoice button');
+    };
+    await fillInvoice(page, { client: 'ACME' });
+    await make('20260001', 'ACME', 'Stará adresa 1');
+    await page.fill('#item-1-price', '10');
+    await make('20260002', 'ACME', 'Nová adresa 9');
+    await page.fill('#item-1-price', '10');
+    await make('20260003', 'Beta a.s.', 'Betová 5');
+    const pick = (name) => page.evaluate((value) => {
+      const input = document.querySelector('#cli-name');
+      input.value = value;
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText' }));
+    }, name);
+    await pick('ACME');
+    equal(await page.inputValue('#cli-street'), 'Nová adresa 9', 'adresa z poslední faktury odběratele');
+    await pick('Beta a.s.');
+    equal(await page.inputValue('#cli-street'), 'Betová 5', 'po výběru jiného odběratele nesmí zůstat adresa předchozího');
+    await page.fill('#cli-street', 'Ručně napsaná 3');
+    await pick('ACME');
+    equal(await page.inputValue('#cli-street'), 'Ručně napsaná 3', 'ručně napsanou adresu výběr nepřepíše');
+  });
+
+  await step('dvě okna: rozepsaná faktura v jednom přežije uložení ve druhém', async () => {
+    const other = await page.context().newPage();
+    other.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
+    await other.goto(base);
+    await other.waitForSelector('.sheet svg');
+    // v prvním okně je rozepsáno a kurzor zůstává v poli
+    await page.fill('#cli-name', 'Rozepsaný v okně A');
+    await page.fill('#item-1-price', '777');
+    await page.focus('#inv-note');
+    await page.waitForTimeout(400);
+    // druhé okno mezitím uloží jinou fakturu
+    await other.fill('#cli-name', 'Uložený z okna B');
+    await other.fill('#item-1-price', '55');
+    await other.click('text=Jen uložit');
+    await eventually(async () => (await other.textContent('.save-status')).includes('je uložená'), 'okno B má uložit');
+    await page.waitForTimeout(300);
+    await page.keyboard.type('Poznámka psaná po uložení ve druhém okně');
+    equal(await page.inputValue('#cli-name'), 'Rozepsaný v okně A', 'rozepsaný odběratel zůstal');
+    await eventually(async () => (await sheetText(page)).includes('Poznámka psaná po uložení ve druhém okně'), 'náhled dál sleduje, co se píše');
+    await page.click('text=Jen uložit');
+    assert((await page.textContent('.problems')).includes('už má jiná faktura'), 'číslo mezitím obsadilo druhé okno a aplikace to má říct');
+    await page.fill('#inv-number', '20260099');
+    await page.click('text=Jen uložit');
+    await eventually(async () => {
+      const names = (await stored(page)).invoices.map((i) => i.client.name);
+      return (names.includes('Rozepsaný v okně A') && names.includes('Uložený z okna B')) || names.join(', ');
+    }, 'v úložišti mají být faktury z obou oken');
+    const mine = (await stored(page)).invoices.find((i) => i.client.name === 'Rozepsaný v okně A');
+    equal(mine.note, 'Poznámka psaná po uložení ve druhém okně', 'uložila se faktura, kterou okno ukazovalo');
+    await other.close();
+  });
+  await page.context().close();
+
   // ---- rozložení ---------------------------------------------------------
 
   page = await open();
@@ -523,9 +627,12 @@ const PAID_CONFIG = `export default {
   await step('telefon v tmavém režimu: nic nepřetéká', async () => {
     await page.check('#sup-vat');
     await page.selectOption('#inv-currency', 'EUR');
-    for (const route of ['faktura', 'prehled', 'upominky', 'qr', 'hodinovka', 'pro']) {
-      await go(page, route);
-      await noOverflow(page, route + ' (360 px)');
+    for (const width of [360, 320]) {
+      await page.setViewportSize({ width, height: 740 });
+      for (const route of ['faktura', 'prehled', 'upominky', 'qr', 'hodinovka', 'pro']) {
+        await go(page, route);
+        await noOverflow(page, `${route} (${width} px)`);
+      }
     }
   });
   await page.context().close();

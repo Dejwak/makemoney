@@ -65,7 +65,10 @@ export function parseSpayd(str) {
   return out;
 }
 
-const epcLine = (v, max) => String(v || '').replace(/[\r\n]+/g, ' ').trim().slice(0, max);
+/** Jeden řádek SEPA QR: bez zalomení, zkrácený po celých znacích. */
+const epcLine = (v, max) => [...String(v || '').replace(/[\r\n]+/g, ' ').trim()].slice(0, max).join('').trim();
+const BIC = /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/;
+const byteLength = (s) => new TextEncoder().encode(s).length;
 
 /**
  * SEPA QR (EPC069-12, verze 002) pro převod v eurech. Čtou ho bankovní aplikace v eurozóně.
@@ -78,14 +81,19 @@ export function buildEpc(p) {
   if (!iban) throw new Error('Chybí IBAN.');
   if (!name) throw new Error('Chybí jméno příjemce.');
   if (!(amount > 0) || amount > 999999999.99) throw new Error('Částka je mimo rozsah SEPA QR.');
-  return [
+  const bic = cleanIban(p.bic);
+  const build = (remittance) => [
     'BCD', '002', '1', 'SCT',
-    cleanIban(p.bic).slice(0, 11),
+    BIC.test(bic) ? bic : '', // nesmyslný BIC radši vynechat; v eurozóně je nepovinný
     name,
     iban,
     'EUR' + amount.toFixed(2),
     '',
     '',
-    epcLine(p.remittance, 140),
+    remittance,
   ].join('\n').replace(/\n+$/, '');
+  let remittance = epcLine(p.remittance, 140);
+  // Standard dovoluje nejvýš 331 bajtů; krátí se zpráva pro příjemce.
+  while (remittance && byteLength(build(remittance)) > 331) remittance = [...remittance].slice(0, -1).join('');
+  return build(remittance);
 }

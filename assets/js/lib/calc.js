@@ -10,7 +10,9 @@ export function parseAmount(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
   let s = String(value ?? '').replace(/[\s\u00a0\u202f]/g, '');
   if (!s) return 0;
-  s = s.replace(/(kč|czk|eur|€|%)$/i, '').replace(/[.,][-–—]$/, '').replace(/−/g, '-');
+  const bare = s.replace(/(kč|czk|eur|€|%)$/i, '').replace(/[.,][-–—]$/, '').replace(/−/g, '-');
+  const decorated = bare !== s; // "1.250,-" nebo "2.500 Kč": tady tečka odděluje tisíce
+  s = bare;
   const comma = s.lastIndexOf(',');
   const dot = s.lastIndexOf('.');
   if (comma >= 0 && dot >= 0) {
@@ -18,6 +20,10 @@ export function parseAmount(value) {
     s = comma > dot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
   } else if (comma >= 0) {
     s = s.replace(',', '.');
+  } else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(s)) {
+    // "1.250" může být 1250 i 1,25. S korunami za číslem je to jasné, jinak se radši zeptáme.
+    if (!decorated) return NaN;
+    s = s.replace(/\./g, '');
   }
   return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
 }
@@ -94,7 +100,9 @@ export function invoiceTotals(invoice) {
   for (const line of lines) {
     if (line.base !== 0) byRate.set(line.rate, (byRate.get(line.rate) || 0) + line.base);
   }
+  // Sazba, jejíž položky se navzájem vyruší (sleva a práce), do rekapitulace nepatří.
   const vat = [...byRate.entries()]
+    .filter(([, sum], _i, all) => sum !== 0 || all.length === 1)
     .sort((a, b) => b[0] - a[0])
     .map(([rate, base]) => ({ rate, base, tax: roundAway((base * rate) / 100) }));
   const base = vat.reduce((s, v) => s + v.base, 0);
@@ -138,6 +146,11 @@ export function isIsoDate(iso) {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
 }
 
+/** Datum, které dává na faktuře smysl. Odfiltruje i rozepsaný rok (0202-11-12) z ručního psaní. */
+export function isBusinessDate(iso) {
+  return isIsoDate(iso) && iso >= '2000-01-01' && iso <= '2100-12-31';
+}
+
 /** Posune datum o daný počet dní; pro neplatné datum vrací ''. */
 export function addDays(iso, days) {
   if (!isIsoDate(iso)) return '';
@@ -171,7 +184,8 @@ export function formatDate(iso, lang = 'cs') {
 export function nextInvoiceNumber(existingNumbers, year = new Date().getFullYear()) {
   const taken = new Set(existingNumbers.map((n) => String(n).trim()));
   const last = [...taken].find(Boolean);
-  if (last && !/^\d{8}$/.test(last)) {
+  const isDefault = (s) => /^(19|20)\d{6}$/.test(s);
+  if (last && !isDefault(last)) {
     // Pořadové číslo je poslední skupina číslic, která nevypadá jako letopočet (12/2026 -> 13/2026).
     const groups = [...last.matchAll(/\d+/g)];
     const serial = [...groups].reverse().find((g) => !/^(19|20)\d\d$/.test(g[0])) || groups[groups.length - 1];
@@ -190,7 +204,7 @@ export function nextInvoiceNumber(existingNumbers, year = new Date().getFullYear
   const prefix = String(year);
   let max = 0;
   for (const s of taken) {
-    if (/^\d{8}$/.test(s) && s.startsWith(prefix)) max = Math.max(max, Number(s.slice(4)));
+    if (isDefault(s) && s.startsWith(prefix)) max = Math.max(max, Number(s.slice(4)));
   }
   return prefix + String(max + 1).padStart(4, '0');
 }
