@@ -8,7 +8,7 @@ export default {
   // Anonymní měření návštěv a použití přes Umami (bez cookies). Prázdné ID = vypnuto.
   // ID webu najdeš v Umami u webu v Settings jako „Website ID“.
   analytics: {
-    umamiWebsiteId: '',
+    umamiWebsiteId: '3bea029e-346c-430f-b563-65686dc2ebff',
     umamiScript: 'https://cloud.umami.is/script.js',
   },
 
