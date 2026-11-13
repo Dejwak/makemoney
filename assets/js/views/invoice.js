@@ -16,6 +16,7 @@ import { pageToSvg, canvasMeasure } from '../lib/render-svg.js';
 import { invoicePdf } from '../lib/render-pdf.js';
 import { saveFile, safeFilename, saveErrorMessage } from '../lib/save.js';
 import { isPro } from '../lib/pro.js';
+import { trackEvent, countBucket } from '../lib/track.js';
 
 /** Volby rozvržení společné pro náhled i PDF. Logo a barva patří k profilu. */
 export function layoutOptions(invoice) {
@@ -38,6 +39,7 @@ export async function downloadInvoicePdf(invoice, button) {
   try {
     const { bytes, missing } = await invoicePdf(invoice, layoutOptions(invoice));
     await saveFile(safeFilename(`faktura-${invoice.number}.pdf`) || 'faktura.pdf', bytes);
+    trackEvent('pdf_downloaded', { currency: invoice.currency, lang: invoice.lang });
     if (missing.length) toast(`PDF je stažené, ale tyhle znaky písmo neumí a budou v něm chybět: ${missing.slice(0, 12).join(' ')}`, 'error');
     else toast('PDF je stažené.');
     return true;
@@ -487,6 +489,10 @@ export function invoiceView({ onTotals }) {
       editing.hidden = false;
       editing.querySelector('strong').textContent = `Upravuješ uloženou fakturu ${result.invoice.number}.`;
       if (result.ok) {
+        trackEvent('invoice_saved', {
+          order: countBucket(state.invoices.length), new: result.created ? 'yes' : 'no',
+          currency: result.invoice.currency, lang: result.invoice.lang, vat_payer: result.invoice.supplier.vatPayer ? 'yes' : 'no',
+        });
         status.classList.remove('is-error');
         status.textContent = `Faktura ${result.invoice.number} je uložená v přehledu.`;
         if (!pdf) toast('Uloženo do přehledu.');

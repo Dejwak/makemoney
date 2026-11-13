@@ -701,6 +701,71 @@ const PAID_CONFIG = `export default {
   });
   await page.context().close();
 
+  // ---- měření --------------------------------------------------------------
+  const ANALYTICS_CONFIG = `export default {
+    siteUrl: '',
+    analytics: { umamiWebsiteId: 'test-web', umamiScript: '/__umami.js', allowLocal: true },
+    owner: { name: '', address: '', ico: '', account: '', email: '' },
+    pro: { enabled: false, priceCzk: 290, paymentUrl: '', licenseHashes: [] },
+  };`;
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
+    page = await context.newPage();
+    page.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
+    await page.route('**/config.js', (route) => route.fulfill({ contentType: 'text/javascript', body: ANALYTICS_CONFIG }));
+    // Napodobenina měřicího skriptu: jen si pamatuje, co by odešlo.
+    await page.route('**/__umami.js', (route) => route.fulfill({ contentType: 'text/javascript', body: `
+      const tag = document.currentScript.dataset;
+      window.__umamiTag = { website: tag.websiteId, autoTrack: tag.autoTrack, dnt: tag.doNotTrack };
+      window.__umami = [];
+      window.umami = { track(arg) { window.__umami.push(typeof arg === 'function' ? arg({ website: tag.websiteId, url: location.pathname + location.search + location.hash }) : arg); } };
+    ` }));
+    await page.goto(base);
+    await page.waitForSelector('.sheet svg');
+  }
+  const sent = () => page.evaluate(() => window.__umami || []);
+
+  await step('měření: posílá jen názvy obrazovek a událostí, nikdy obsah faktur ani platební údaje z adresy', async () => {
+    await eventually(async () => (await sent()).some((e) => e.url === '/faktura' && !e.name), 'zobrazení úvodní obrazovky');
+    equal(JSON.stringify(await page.evaluate(() => window.__umamiTag)), JSON.stringify({ website: 'test-web', autoTrack: 'false', dnt: 'true' }), 'nastavení měřicího skriptu');
+    assert((await page.textContent('#privacy-line')).includes('Měříme jen anonymní počty'), 'patička má měření přiznat');
+    await fillInvoice(page, { client: 'Tajný Klient s.r.o.' });
+    await page.fill('#inv-note', 'Důvěrná poznámka 4242');
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('text=Uložit a stáhnout PDF')]);
+    await download.cancel().catch(() => {});
+    await go(page, 'prehled');
+    await page.click('.btn-paid');
+    await go(page, 'pro');
+    assert((await page.textContent('.privacy')).includes('Měříme jen anonymní počty'), 'stránka Pro má měření přiznat');
+    const secret = b64url({ a: '2000145399/0800', m: '450', v: '123', t: 'Tajemství', n: 'Jana' });
+    await page.goto(base + '#p=' + secret);
+    await page.waitForSelector('.qr-code svg');
+    await eventually(async () => (await sent()).some((e) => e.url === '/zadost'), 'zobrazení žádosti o platbu');
+    const events = await sent();
+    const names = events.map((e) => e.name || 'view:' + e.url);
+    for (const expected of ['view:/faktura', 'invoice_saved', 'pdf_downloaded', 'view:/prehled', 'invoice_paid', 'view:/pro', 'view:/zadost']) {
+      assert(names.includes(expected), `chybí ${expected} v ${names.join(', ')}`);
+    }
+    const saved = events.find((e) => e.name === 'invoice_saved');
+    equal(JSON.stringify(saved.data), JSON.stringify({ order: '1', new: 'yes', currency: 'CZK', lang: 'cs', vat_payer: 'no' }), 'údaje u uložení faktury');
+    const all = JSON.stringify(events);
+    for (const leak of ['Tajný Klient', 'Petr Svoboda', '2000145399', 'Důvěrná', '4242', 'Tajemství', secret, 'p=']) {
+      assert(!all.includes(leak), `do měření unikl údaj „${leak}“`);
+    }
+    assert(events.every((e) => /^\/[a-z]+$/.test(e.url)), 'adresa v měření je vždy jen název obrazovky: ' + events.map((e) => e.url).join(', '));
+  });
+  await page.context().close();
+
+  page = await open();
+  await step('měření je bez nastaveného ID úplně vypnuté', async () => {
+    await fillInvoice(page);
+    await saveOnly(page);
+    equal(await page.locator('script[data-website-id]').count(), 0, 'měřicí skript se nemá načítat');
+    equal(await page.evaluate(() => typeof window.umami), 'undefined', 'žádný měřicí objekt');
+    assert((await page.textContent('#privacy-line')).includes('bez sledování'), 'bez měření platí slib bez sledování');
+  });
+  await page.context().close();
+
   await step('během testů nevznikla chyba v konzoli ani neúspěšný požadavek', async () => {
     assert(problems.length === 0, problems.join('\n'));
   });

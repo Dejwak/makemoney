@@ -2,6 +2,7 @@ import { h, toast, confirmButton } from './ui.js';
 import { formatDate } from './lib/calc.js';
 import { state, onStorageFailure, onExternalChange, storageWorks, exportBackup, resetAll } from './lib/store.js';
 import { saveFile, saveErrorMessage } from './lib/save.js';
+import { analyticsEnabled, initAnalytics, trackView } from './lib/track.js';
 import { invoiceView } from './views/invoice.js';
 import { overviewView } from './views/overview.js';
 import { remindersView } from './views/reminders.js';
@@ -99,6 +100,8 @@ function show() {
   }
   document.title = request ? 'Žádost o platbu – Cinkne' : TITLES[name];
   if (shownKey !== null && shownKey !== key) window.scrollTo(0, 0);
+  // Žádost o platbu má v adrese platební údaje; do měření jde jen název obrazovky.
+  if (shownKey !== key) trackView(request ? 'zadost' : name, document.title);
   shownKey = key;
 }
 
@@ -189,6 +192,13 @@ document.addEventListener('focusout', () => {
     }
   }, 0);
 });
+
+// Kde se měří, tam to stránka přizná.
+if (analyticsEnabled()) {
+  const line = document.getElementById('privacy-line');
+  if (line) line.textContent = 'Bez registrace a bez cookies. Měříme jen anonymní počty návštěv a použití; obsah faktur neopouští tvůj prohlížeč.';
+}
+initAnalytics();
 
 window.addEventListener('hashchange', show);
 show();

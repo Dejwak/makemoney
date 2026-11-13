@@ -440,3 +440,9 @@ test('název souboru', () => {
   assert.equal(safeFilename('faktura-Žluťoučký kůň/2026.pdf'), 'faktura-Zlutoucky-kun-2026.pdf');
   assert.equal(safeFilename('../../etc/passwd'), '..-..-etc-passwd');
 });
+
+test('měření: pořadí faktury se hlásí jen jako pásmo', async () => {
+  const { countBucket, analyticsEnabled } = await import('../assets/js/lib/track.js');
+  assert.deepEqual([0, 1, 2, 5, 6, 20, 21, 500].map(countBucket), ['1', '1', '2-5', '2-5', '6-20', '6-20', '21+', '21+']);
+  assert.equal(analyticsEnabled(), false, 'bez ID webu je měření vypnuté');
+});

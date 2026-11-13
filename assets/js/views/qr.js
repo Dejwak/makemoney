@@ -8,6 +8,7 @@ import { normalizeAccount, formatIban } from '../lib/iban.js';
 import { buildSpayd } from '../lib/spayd.js';
 import { qrMatrix, qrSvg, drawQr } from '../lib/qr.js';
 import { saveFile, copyText, saveErrorMessage } from '../lib/save.js';
+import { trackEvent } from '../lib/track.js';
 
 /** Zakóduje platební údaje do odkazu (část za #, která se neposílá na server). */
 export function encodeRequest(q) {
@@ -138,12 +139,14 @@ export function qrView({ request }) {
     if (!current) return;
     try {
       await saveFile('qr-platba.png', await qrPng(current.matrix, current.lines));
+      trackEvent('qr_png_saved');
     } catch (err) {
       toast(saveErrorMessage(err), err.code === 'declined' ? '' : 'error');
     }
   });
   copyBtn.addEventListener('click', async () => {
     if (!current) return;
+    trackEvent('qr_details_copied');
     if (await copyText(current.text)) return toast('Platební údaje jsou ve schránce.');
     details.classList.remove('visually-hidden');
     details.focus();
@@ -151,6 +154,7 @@ export function qrView({ request }) {
     toast('Kopírování tu nejde. Údaje jsou označené, zkopíruj je ručně.');
   });
   shareBtn.addEventListener('click', async () => {
+    trackEvent('qr_link_copied');
     const url = config.siteUrl.replace(/\/?$/, '/') + '#p=' + encodeRequest(q);
     toast((await copyText(url)) ? 'Odkaz je ve schránce. Pošli ho tomu, kdo má platit.' : 'Kopírování tu nejde.');
   });

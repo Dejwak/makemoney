@@ -5,6 +5,7 @@ import { state, persist, visibleInvoices } from '../lib/store.js';
 import { daysBetween, formatDate, formatMoney, invoiceStatus, invoiceTotals, isAmount, num, statutoryInterestRate, todayIso } from '../lib/calc.js';
 import { TONES, buildReminder, suggestTone, dayWord } from '../lib/reminders.js';
 import { copyText } from '../lib/save.js';
+import { trackEvent } from '../lib/track.js';
 
 export function remindersView() {
   const root = h('div', { class: 'reminders-view' });
@@ -134,7 +135,7 @@ export function remindersView() {
           editedNote,
           reminder.lang === 'en' && h('p', { class: 'fine' }, 'Faktura je v angličtině, upomínka proto taky.'),
           h('div', { class: 'actions-row' },
-            h('button', { type: 'button', class: 'btn btn-primary', onclick: () => copy(body.value, 'Text upomínky', body) }, 'Kopírovat text upomínky'),
+            h('button', { type: 'button', class: 'btn btn-primary', onclick: () => { trackEvent('reminder_copied', { tone: activeTone, lang: reminder.lang }); copy(body.value, 'Text upomínky', body); } }, 'Kopírovat text upomínky'),
             h('button', { type: 'button', class: 'btn', disabled: example, onclick: () => {
               if (!Array.isArray(invoice.reminders)) invoice.reminders = [];
               invoice.reminders.push({ date: todayIso(), tone: activeTone });

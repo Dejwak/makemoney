@@ -3,7 +3,7 @@
 Faktura s QR Platbou za minutu. Webová aplikace pro živnostníky a lidi na volné noze, která jim
 pomáhá dostat zaplaceno: vystaví fakturu, pohlídá splatnost, napíše upomínku a poradí s cenou.
 
-Běží celá v prohlížeči. Nemá server, databázi, registraci ani sledování. Faktury zůstávají
+Běží celá v prohlížeči. Nemá server, databázi ani registraci. Faktury zůstávají
 u uživatele v `localStorage`, PDF i QR kódy vznikají přímo v jeho zařízení.
 
 ## Co umí
@@ -52,6 +52,16 @@ Na nástroj za pár stovek to stačí; až to přestane stačit, je čas na serv
 
 Co kód nevyřeší a je na provozovateli: vlastní doména, podmínky užití a zásady ochrany
 soukromí, živnost a zdanění příjmů, přivedení prvních uživatelů.
+
+## Měření návštěv a použití
+
+Ve výchozím stavu se neměří nic. Když do `config.js` doplníš `analytics.umamiWebsiteId`
+(ID webu z [Umami](https://umami.is)), začne aplikace na veřejném webu posílat anonymní počty:
+zobrazení obrazovek a události jako uložení faktury, stažení PDF nebo zápis zaplacení.
+Měří se bez cookies. Nikdy se neposílá nic, co uživatel napsal, ani skutečná adresa stránky
+(odkaz se žádostí o platbu v ní nese číslo účtu); hlídá to test v `tests/e2e`.
+Texty o soukromí na webu se při zapnutém měření samy změní. Při vývoji na `localhost` a uvnitř
+claude.ai se neměří.
 
 ## Spuštění
 

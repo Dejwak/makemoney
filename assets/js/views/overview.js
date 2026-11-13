@@ -9,6 +9,7 @@ import { daysBetween, formatDate, formatMoney, formatWhole, invoiceStatus, invoi
 import { saveFile, saveErrorMessage } from '../lib/save.js';
 import { dayWord } from '../lib/reminders.js';
 import { isPro } from '../lib/pro.js';
+import { trackEvent } from '../lib/track.js';
 import { downloadInvoicePdf } from './invoice.js';
 
 const FILTERS = [
@@ -143,6 +144,7 @@ export function overviewView({ go }) {
       return;
     }
     markBackedUp();
+    trackEvent('backup_downloaded');
     render();
     toast('Záloha je stažená. Ulož si ji i mimo tohle zařízení, třeba do e-mailu nebo na cloud.');
   }
@@ -190,6 +192,7 @@ export function overviewView({ go }) {
                 if (next) next.focus();
               }
               if (saved) {
+                trackEvent('invoice_paid');
                 chime();
                 toast(`Cink! ${formatMoney(totals.total, inv.currency)} je doma.`);
               } else {
@@ -271,6 +274,7 @@ export function overviewView({ go }) {
           h('div', { class: 'notice-actions' },
             h('button', { type: 'button', class: 'btn btn-small', id: 'backup-apply', onclick: () => {
               const ok = applyBackup(pendingBackup.data);
+              trackEvent('backup_restored');
               const count = pendingBackup.count;
               pendingBackup = null;
               render();
@@ -302,7 +306,7 @@ export function overviewView({ go }) {
       h('div', { class: 'actions-row' },
         h('button', { type: 'button', class: 'btn', disabled: empty, onclick: downloadBackup }, 'Stáhnout zálohu'),
         h('label', { class: 'btn', for: 'backup-file' }, 'Načíst zálohu', fileInput),
-        h('button', { type: 'button', class: 'btn', disabled: empty || !pro, onclick: () => save(`cinkne-faktury-${todayIso()}.csv`, invoicesCsv(state.invoices)) }, 'Export CSV pro účetní'),
+        h('button', { type: 'button', class: 'btn', disabled: empty || !pro, onclick: () => { trackEvent('csv_exported'); save(`cinkne-faktury-${todayIso()}.csv`, invoicesCsv(state.invoices)); } }, 'Export CSV pro účetní'),
         !pro && h('a', { class: 'pro-tag', href: '#pro' }, 'Pro')
       ),
       confirmBox

@@ -5,6 +5,13 @@ export default {
   // Veřejná adresa webu, např. 'https://cinkne.cz/'. Zapne sdílení platebních odkazů.
   siteUrl: '',
 
+  // Anonymní měření návštěv a použití přes Umami (bez cookies). Prázdné ID = vypnuto.
+  // ID webu najdeš v Umami u webu v Settings jako „Website ID“.
+  analytics: {
+    umamiWebsiteId: '',
+    umamiScript: 'https://cloud.umami.is/script.js',
+  },
+
   // Kdo aplikaci provozuje. Vyplněný účet zapne dobrovolné příspěvky přes QR Platbu.
   // Jakmile přijímáš platby, zákon chce na webu i sídlo a IČO provozovatele.
   owner: {

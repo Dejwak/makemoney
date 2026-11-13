@@ -8,6 +8,7 @@ import { buildSpayd } from '../lib/spayd.js';
 import { qrMatrix, qrSvg } from '../lib/qr.js';
 import { isPro, proIsFree, unlockWithCode } from '../lib/pro.js';
 import { state, persist } from '../lib/store.js';
+import { analyticsEnabled, trackEvent } from '../lib/track.js';
 
 const FREE = [
   'Faktury s QR Platbou bez omezení počtu',
@@ -72,6 +73,7 @@ export function proView() {
           e.preventDefault();
           const result = await unlockWithCode(code.input.value);
           if (result === 'ok') {
+            trackEvent('pro_unlocked');
             toast('Pro je odemčené. Díky!');
             render();
           } else if (result === 'unsupported') {
@@ -128,7 +130,9 @@ export function proView() {
       h('h2', null, 'Tvoje data jsou tvoje'),
       h('ul', { class: 'ticks' },
         h('li', null, 'Faktury, odběratelé i číslo účtu zůstávají ve tvém prohlížeči. Neposíláme je na žádný server.'),
-        h('li', null, 'Žádná registrace, žádné cookies, žádné sledování. Data se ukládají jen do úložiště tvého prohlížeče.'),
+        h('li', null, analyticsEnabled()
+          ? 'Žádná registrace a žádné cookies. Měříme jen anonymní počty návštěv a použití, například kolikrát někdo stáhl PDF. Co do faktur píšeš, se neměří.'
+          : 'Žádná registrace, žádné cookies, žádné sledování. Data se ukládají jen do úložiště tvého prohlížeče.'),
         h('li', null, 'PDF i QR kódy vznikají přímo u tebe v zařízení.')),
       h('p', { class: 'fine' }, 'Cinkne nenahrazuje účetního ani daňového poradce. Za správnost vystavených dokladů odpovídá ten, kdo je vystavuje.'),
       (config.owner.name || config.owner.email) && h('p', { class: 'fine' }, 'Provozuje ',
