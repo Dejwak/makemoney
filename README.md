@@ -75,12 +75,14 @@ npm run test:e2e   # průchod aplikací v prohlížeči (potřebuje balíček pl
 
 ## Nasazení
 
-Web tvoří `index.html`, `config.js` a složka `assets`. Dá se nahrát na jakýkoli statický hosting
-(Netlify, Cloudflare Pages, Vercel, vlastní server).
+Web běží na **https://cinkne.cz** přes GitHub Pages. Každý push do větve
+`claude/gallant-galileo-r2oetd` (nebo `main`) spustí workflow `.github/workflows/pages.yml`,
+který pustí testy a nasadí `index.html`, `config.js`, `robots.txt`, `sitemap.xml` a složku
+`assets`. Doména je nastavená v *Settings → Pages* a DNS záznamy u registrátora (čtyři záznamy A
+na GitHub Pages a CNAME `www`).
 
-**GitHub Pages:** v repozitáři je připravený workflow `.github/workflows/pages.yml`.
-V *Settings → Pages* zvol *Source: GitHub Actions* a workflow spusť ručně, nebo sluč změny
-do větve `main`. U soukromého repozitáře vyžaduje GitHub Pages placený tarif GitHubu.
+Protože jde o obyčejné soubory, dá se web kdykoli přenést na jiný statický hosting
+(Netlify, Cloudflare Pages, vlastní server); stačí přesměrovat DNS.
 
 **Artefakt na claude.ai:** `node tools/build-artifact.mjs <soubor>` připraví variantu stránky
 pro publikaci jako artefakt (styly vložené do stránky, stahování přes rozhraní hostitele).

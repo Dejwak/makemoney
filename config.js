@@ -3,7 +3,7 @@
 
 export default {
   // Veřejná adresa webu, např. 'https://cinkne.cz/'. Zapne sdílení platebních odkazů.
-  siteUrl: '',
+  siteUrl: 'https://cinkne.cz/',
 
   // Anonymní měření návštěv a použití přes Umami (bez cookies). Prázdné ID = vypnuto.
   // ID webu najdeš v Umami u webu v Settings jako „Website ID“.

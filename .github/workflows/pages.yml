@@ -1,12 +1,11 @@
 name: Nasazení na GitHub Pages
 
-# Spouští se ručně (Actions → Nasazení na GitHub Pages → Run workflow)
-# a při každém pushi do větve main. Nejdřív je potřeba v Settings → Pages
-# zvolit Source: GitHub Actions.
+# Web běží na https://cinkne.cz (Settings → Pages, Source: GitHub Actions).
+# Nasazuje se při každém pushi do hlavní větve; jde spustit i ručně.
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, claude/gallant-galileo-r2oetd]
 
 permissions:
   contents: read
@@ -32,7 +31,7 @@ jobs:
       - name: Připravit složku webu
         run: |
           mkdir _site
-          cp -r index.html config.js assets .nojekyll _site/
+          cp -r index.html config.js robots.txt sitemap.xml assets .nojekyll _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
