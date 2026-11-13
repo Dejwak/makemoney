@@ -40,6 +40,13 @@ Všechno se zapíná v jediném souboru, [`config.js`](config.js):
    podnikateli. Po vyplnění `siteUrl` se navíc zapne sdílení platebních odkazů z obrazovky
    QR Platba.
 
+### Když nemáš IČO
+
+Zdarma můžeš aplikaci provozovat bez omezení. Tak je i nastavená: Pro je odemčené všem
+a příspěvky jsou vypnuté. Prodej verze Pro nebo pravidelné přijímání příspěvků je ale soustavná
+výdělečná činnost a na tu je v Česku potřeba živnostenské oprávnění, tedy i IČO. Než zapneš
+`pro.enabled` nebo vyplníš `owner.account`, vyřiď si živnost a s účetní prober daně a pojištění.
+
 Poctivá poznámka: ověření kódu probíhá v prohlížeči, takže ho technicky zdatný člověk obejde.
 Na nástroj za pár stovek to stačí; až to přestane stačit, je čas na server s účty.
 

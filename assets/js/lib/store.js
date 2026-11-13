@@ -479,9 +479,20 @@ export function exportBackup() {
   return JSON.stringify({ app: 'cinkne', exportedAt: new Date().toISOString(), data: state }, null, 2);
 }
 
+/** Čísla, která má víc faktur najednou (bez ohledu na velikost písmen). */
+export function duplicateNumbers(invoices) {
+  const counts = new Map();
+  for (const inv of invoices) {
+    const key = String(inv.number).trim().toLowerCase();
+    if (!counts.has(key)) counts.set(key, { number: String(inv.number).trim(), count: 0 });
+    counts.get(key).count += 1;
+  }
+  return [...counts.values()].filter((entry) => entry.count > 1).map((entry) => entry.number);
+}
+
 /**
  * Přečte zálohu, aniž by cokoli změnil.
- * @returns {{ data: object, count: number }} vyčištěný stav a počet faktur v něm
+ * @returns {{ data: object, count: number, duplicates: string[] }} vyčištěný stav, počet faktur a čísla použitá vícekrát
  * @throws {Error} se srozumitelnou zprávou
  */
 export function inspectBackup(fileText) {
@@ -496,7 +507,7 @@ export function inspectBackup(fileText) {
     throw new Error('Soubor nevypadá jako záloha z Cinkne.');
   }
   const data = normalizeState(raw);
-  return { data, count: data.invoices.length };
+  return { data, count: data.invoices.length, duplicates: duplicateNumbers(data.invoices) };
 }
 
 /** Nahradí data zálohou z inspectBackup(). Odemčení Pro zůstává, jak bylo. */

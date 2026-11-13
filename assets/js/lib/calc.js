@@ -179,7 +179,8 @@ export function formatDate(iso, lang = 'cs') {
 /**
  * Další číslo faktury. `existingNumbers` jsou už vystavená čísla, nejnovější první.
  * Výchozí řada je RRRRNNNN a s novým rokem začíná od 0001. Kdo si čísluje po svém
- * (FV-2026-012, 12/2026…), tomu se zvýší pořadové číslo naposledy vystavené faktury.
+ * (FV-2026-012, 12/2026…), tomu se zvýší pořadové číslo naposledy vystavené faktury;
+ * obsahuje-li číslo loňský letopočet, přepíše se na letošní a řada začne od jedničky.
  */
 export function nextInvoiceNumber(existingNumbers, year = new Date().getFullYear()) {
   const taken = new Set(existingNumbers.map((n) => String(n).trim()));
@@ -188,15 +189,30 @@ export function nextInvoiceNumber(existingNumbers, year = new Date().getFullYear
   if (last && !isDefault(last)) {
     // Pořadové číslo je poslední skupina číslic, která nevypadá jako letopočet (12/2026 -> 13/2026).
     const groups = [...last.matchAll(/\d+/g)];
-    const serial = [...groups].reverse().find((g) => !/^(19|20)\d\d$/.test(g[0])) || groups[groups.length - 1];
+    const isYear = (g) => /^(19|20)\d\d$/.test(g[0]);
+    const serial = [...groups].reverse().find((g) => !isYear(g)) || groups[groups.length - 1];
     if (serial) {
-      const head = last.slice(0, serial.index);
-      const tail = last.slice(serial.index + serial[0].length);
-      let n = BigInt(serial[0]);
+      // Řada s letopočtem (FA-2026-012, 12/2026) začíná v novém roce znovu od jedničky.
+      const years = groups.filter((g) => g !== serial && isYear(g));
+      const rollover = years.length === 1 && Number(years[0][0]) < year;
+      const build = (n) => {
+        let out = '';
+        let pos = 0;
+        for (const g of groups) {
+          out += last.slice(pos, g.index);
+          if (g === serial) out += n;
+          else out += rollover && g === years[0] ? String(year) : g[0];
+          pos = g.index + g[0].length;
+        }
+        return out + last.slice(pos);
+      };
+      // Šířku s nulami drží jen řada, která nuly opravdu používá (012 ano, 12 ne).
+      const width = serial[0].startsWith('0') || !rollover ? serial[0].length : 1;
+      let n = rollover ? 0n : BigInt(serial[0]);
       let candidate;
       do {
         n += 1n;
-        candidate = head + String(n).padStart(serial[0].length, '0') + tail;
+        candidate = build(String(n).padStart(width, '0'));
       } while (taken.has(candidate));
       return candidate;
     }

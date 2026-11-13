@@ -3,7 +3,7 @@
 import { h, toast, confirmButton, chime } from '../ui.js';
 import {
   state, persist, visibleInvoices, exportBackup, inspectBackup, applyBackup, startNewDraft, editInvoice,
-  duplicateAsDraft, deleteInvoice,
+  duplicateAsDraft, deleteInvoice, duplicateNumbers,
 } from '../lib/store.js';
 import { daysBetween, formatDate, formatMoney, formatWhole, invoiceStatus, invoiceTotals, todayIso, yearTurnover } from '../lib/calc.js';
 import { saveFile, saveErrorMessage } from '../lib/save.js';
@@ -67,6 +67,7 @@ export function overviewView({ go }) {
   const root = h('div', { class: 'overview-view' });
   let filter = 'all';
   let pendingBackup = null;
+  let dupes = new Set();
 
   /** Akce, která zahodí rozepsanou fakturu, se napřed zeptá. */
   const draftAction = (label, run, cls = 'btn btn-ghost btn-small') => (state.dirty
@@ -78,6 +79,7 @@ export function overviewView({ go }) {
     const year = today.slice(0, 4);
     const { list, example } = visibleInvoices();
     const withStatus = list.map((inv) => ({ inv, status: invoiceStatus(inv, today) }));
+    dupes = new Set(duplicateNumbers(list).map((n) => n.toLowerCase()));
     const open = withStatus.filter((x) => x.status === 'open').map((x) => x.inv);
     const overdue = withStatus.filter((x) => x.status === 'overdue').map((x) => x.inv);
     const paidThisYear = withStatus.filter((x) => x.status === 'paid' && String(x.inv.paidAt).startsWith(year)).map((x) => x.inv);
@@ -187,7 +189,8 @@ export function overviewView({ go }) {
     li.dataset.id = inv.id;
     li.append(
       h('div', { class: 'row-main' },
-        h('div', { class: 'row-who' }, h('strong', null, inv.client?.name || 'Bez odběratele'), h('span', { class: 'mono row-number' }, inv.number)),
+        h('div', { class: 'row-who' }, h('strong', null, inv.client?.name || 'Bez odběratele'), h('span', { class: 'mono row-number' }, inv.number),
+          dupes.has(String(inv.number).trim().toLowerCase()) && h('span', { class: 'row-dupe' }, 'Stejné číslo má víc faktur. Jednu přečísluj.')),
         h('div', { class: 'row-amount mono' }, formatMoney(totals.total, inv.currency)),
         h('div', { class: 'row-status' }, pill, h('span', { class: 'row-due' }, `splatnost ${formatDate(inv.due)}`),
           status !== 'paid' && sent.length > 0 && h('span', { class: 'row-due' }, `upomenuto ${sent.length}×, naposledy ${formatDate(sent[sent.length - 1].date)}`)),
@@ -241,7 +244,8 @@ export function overviewView({ go }) {
         const current = state.invoices.length;
         confirmBox.replaceChildren(
           h('p', null, h('strong', null, `Záloha obsahuje ${pendingBackup.count} ${plural(pendingBackup.count, 'fakturu', 'faktury', 'faktur')}.`),
-            current ? ` Nahradí ${current} ${plural(current, 'fakturu', 'faktury', 'faktur')}, které tu máš teď.` : ' Načtením se přepíše rozepsaná faktura a nastavení.'),
+            current ? ` Nahradí ${current} ${plural(current, 'fakturu', 'faktury', 'faktur')}, které tu máš teď.` : ' Načtením se přepíše rozepsaná faktura a nastavení.',
+            pendingBackup.duplicates.length > 0 && h('span', { class: 'warn-text' }, ` Pozor, v záloze má víc faktur stejné číslo: ${pendingBackup.duplicates.slice(0, 5).join(', ')}. Po načtení je přečísluj.`)),
           h('div', { class: 'notice-actions' },
             h('button', { type: 'button', class: 'btn btn-small', id: 'backup-apply', onclick: () => {
               const ok = applyBackup(pendingBackup.data);

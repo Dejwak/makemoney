@@ -216,6 +216,18 @@ test('číslování faktur', () => {
   assert.equal(nextInvoiceNumber(['26000012'], 2026), '26000013', 'vlastní osmimístná řada pokračuje');
 });
 
+test('vlastní číselná řada s letopočtem začíná v novém roce od jedničky', () => {
+  assert.equal(nextInvoiceNumber(['FA-2026-012'], 2027), 'FA-2027-001');
+  assert.equal(nextInvoiceNumber(['FA-2026-012'], 2026), 'FA-2026-013');
+  assert.equal(nextInvoiceNumber(['12/2026'], 2027), '1/2027', 'řada bez nul nuly nedostane');
+  assert.equal(nextInvoiceNumber(['012/2026'], 2027), '001/2027');
+  assert.equal(nextInvoiceNumber(['2026/12'], 2027), '2027/1');
+  assert.equal(nextInvoiceNumber(['FA-2026-012', 'FA-2027-001'], 2027), 'FA-2027-002', 'obsazené číslo se přeskočí');
+  assert.equal(nextInvoiceNumber(['FA-2028-003'], 2027), 'FA-2028-004', 'budoucí rok se nevrací');
+  assert.equal(nextInvoiceNumber(['2025-2026-5'], 2027), '2025-2026-6', 'dva letopočty: jen pořadí');
+  assert.equal(nextInvoiceNumber(['A9'], 2027), 'A10');
+});
+
 test('VS, IČO, stav faktury', () => {
   assert.equal(toVs('FV-2026/0001'), '20260001');
   assert.equal(toVs('123456789012345'), '6789012345');
@@ -272,6 +284,25 @@ test('upomínky podle zpoždění', () => {
   const friendly = buildReminder(invoice(), { today: '2026-11-27' });
   assert.equal(friendly.tone, 'friendly');
   assert.ok(!/úrok/.test(friendly.body));
+});
+
+test('anglická faktura dostane anglickou upomínku', () => {
+  const inv = invoice({ lang: 'en', currency: 'EUR', due: '2026-08-17' });
+  const early = buildReminder(inv, { today: '2026-08-10', tone: 'final' });
+  assert.equal(early.tone, 'early');
+  assert.match(early.subject, /is due soon/);
+  assert.ok(!/overdue|court/.test(early.body));
+  const final = buildReminder(inv, { today: '2026-11-13', interestRate: '11,75', previous: 1 });
+  assert.equal(final.lang, 'en');
+  assert.match(final.subject, /^Final notice: invoice 20260001$/);
+  assert.match(final.body, /^Hello,\n\nDespite my previous reminders, I have still not received payment/);
+  assert.match(final.body, /Amount: €12,300\.00/);
+  assert.match(final.body, /88 days overdue/);
+  assert.match(final.body, /\(11\.75% per year\)/);
+  assert.match(final.body, /by 20 Nov 2026 at the latest/);
+  assert.ok(!/[ěščřžýáíéůúťďň]/i.test(final.body.replace('Jana Nováková', '')), 'žádná čeština v anglickém textu');
+  assert.match(buildReminder(inv, { today: '2026-08-18' }).body, /1 day overdue|which was due on 17 Aug 2026/);
+  assert.equal(buildReminder(invoice(), { today: '2026-12-30' }).lang, 'cs');
 });
 
 test('upomínka faktuře, která ještě není po splatnosti, netvrdí opak', () => {
@@ -380,6 +411,11 @@ test('rozvržení: jemná cena, euro s DPH v korunách, důvod nulové daně, an
     assert.ok(t.includes(expected), expected);
   }
   assert.ok(t.includes('VAT 21% in Czech currency: CZK 5,145.00 (rate 24.5 CZK/EUR)'));
+  const note = 'Fyzická osoba zapsaná v živnostenském rejstříku.';
+  const english = texts(layout(invoice({ lang: 'en', supplier: { name: 'X', account: '19-2000145399/0800', register: note } })).pages).join(' ');
+  assert.ok(english.includes('Natural person registered in the Czech Trade Register.') && !english.includes('živnostenském'));
+  assert.ok(texts(layout(invoice({ lang: 'en', supplier: { name: 'X', register: 'Vlastní text' } })).pages).includes('Vlastní text'), 'vlastní zápis se nepřekládá');
+  assert.ok(texts(layout(invoice({ supplier: { name: 'X', register: note } })).pages).includes(note));
 });
 
 test('zalamování textu je lineární a SVG bezpečné', () => {

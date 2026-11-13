@@ -3,7 +3,7 @@
 import { h, field, toast, confirmButton } from '../ui.js';
 import {
   state, persist, touchDraft, saveDraftAsInvoice, startNewDraft, clearExample, emptyItem, storedDraftInvoice,
-  exampleSupplierFields,
+  exampleSupplierFields, REGISTER_NOTE,
 } from '../lib/store.js';
 import {
   VAT_RATES, addDays, daysBetween, formatMoney, invoiceTotals, isAmount, isBusinessDate, isValidIco, num, toVs,
@@ -91,7 +91,10 @@ export function validateInvoice(draft, otherInvoices = []) {
       problems.push('U položek s 0 % DPH doplň důvod (například „Daň odvede zákazník.“).');
     }
   }
-  if (!String(s.ico).trim()) warnings.push('Na faktuře chybí tvoje IČO. Podnikatel ho na dokladech uvádět musí.');
+  if (!String(s.ico).trim()) {
+    warnings.push('Na faktuře chybí IČO. Podnikatel ho na dokladech uvádět musí; bez živnosti jde fakturovat jen příležitostnou činnost.');
+    if (String(s.register).trim() === REGISTER_NOTE) warnings.push('Bez IČO nejsi v živnostenském rejstříku. Řádek „Zápis v rejstříku“ proto smaž nebo přepiš.');
+  }
   else if (!isValidIco(s.ico)) warnings.push('Tvoje IČO nevypadá správně, zkontroluj ho.');
   if (draft.client.ico && !isValidIco(draft.client.ico)) warnings.push('IČO odběratele nevypadá správně, zkontroluj ho.');
   return { problems, warnings };

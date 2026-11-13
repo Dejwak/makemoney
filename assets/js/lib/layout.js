@@ -12,6 +12,10 @@ export const RULE = '#d3dcd7';
 export const SOFT = '#f0f4f2';
 export const DEFAULT_ACCENT = '#0a7a55';
 
+// Výchozí zápis v rejstříku se na anglické faktuře vytiskne anglicky; vlastní text zůstává, jak je.
+const REGISTER_CS = 'Fyzická osoba zapsaná v živnostenském rejstříku.';
+const REGISTER_EN = 'Natural person registered in the Czech Trade Register.';
+
 const LABELS = {
   cs: {
     title: 'FAKTURA', titleVat: 'FAKTURA – DAŇOVÝ DOKLAD',
@@ -208,7 +212,8 @@ export function layoutInvoice(invoice, opts) {
     }
     if (isSupplier) {
       // Prohlášení o neplátcovství má vlastní řádek, aby ho dlouhý zápis v rejstříku nevytlačil.
-      const notes = capLines(wrapText(p.register || '', 'sans', 8, colW, measure).filter(Boolean), 4);
+      const register = lang === 'en' && String(p.register || '').trim() === REGISTER_CS ? REGISTER_EN : p.register;
+      const notes = capLines(wrapText(register || '', 'sans', 8, colW, measure).filter(Boolean), 4);
       if (!p.vatPayer) notes.push(L.nonPayer);
       if (notes.length) yy += 4;
       for (const l of notes) {

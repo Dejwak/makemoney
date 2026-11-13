@@ -10,6 +10,8 @@ export function remindersView() {
   const root = h('div', { class: 'reminders-view' });
   let selectedId = null;
   let tone = null;
+  // Ručně upravené texty podle faktury a tónu; přepnutí tónu je nezahodí.
+  const edits = new Map();
 
   async function copy(text, what, fallbackEl) {
     if (await copyText(text)) {
@@ -85,7 +87,19 @@ export function remindersView() {
     finalBox.hidden = activeTone !== 'final';
 
     const subject = h('input', { id: 'rem-subject', type: 'text', readOnly: true, value: reminder.subject });
-    const body = h('textarea', { id: 'rem-body', rows: 14, value: reminder.body });
+    const editKey = `${invoice.id}:${activeTone}`;
+    const edited = edits.has(editKey);
+    const body = h('textarea', { id: 'rem-body', rows: 14, value: edited ? edits.get(editKey) : reminder.body,
+      oninput: (e) => {
+        const had = edits.has(editKey);
+        if (e.target.value === reminder.body) edits.delete(editKey);
+        else edits.set(editKey, e.target.value);
+        if (had !== edits.has(editKey)) editedNote.hidden = !edits.has(editKey);
+      } });
+    const editedNote = h('div', { class: 'edited-note' },
+      h('p', { class: 'fine' }, 'Tohle je tvoje upravená verze. Změna úroku ani data se do ní sama nepromítne.'),
+      h('button', { type: 'button', class: 'btn btn-ghost btn-small', onclick: () => { edits.delete(editKey); render(); } }, 'Vrátit původní text'));
+    editedNote.hidden = !edited;
     const email = invoice.client?.email || '';
     const emailInput = h('input', { id: 'rem-email', type: 'text', readOnly: true, class: 'mono', value: email || 'u odběratele není e-mail' });
 
@@ -117,6 +131,8 @@ export function remindersView() {
             h('label', { class: 'field', for: 'rem-subject' }, h('span', { class: 'field-label' }, 'Předmět'), subject),
             h('button', { type: 'button', class: 'btn btn-small', onclick: () => copy(subject.value, 'Předmět', subject) }, 'Kopírovat')),
           h('label', { class: 'field', for: 'rem-body' }, h('span', { class: 'field-label' }, 'Text (můžeš upravit)'), body),
+          editedNote,
+          reminder.lang === 'en' && h('p', { class: 'fine' }, 'Faktura je v angličtině, upomínka proto taky.'),
           h('div', { class: 'actions-row' },
             h('button', { type: 'button', class: 'btn btn-primary', onclick: () => copy(body.value, 'Text upomínky', body) }, 'Kopírovat text upomínky'),
             h('button', { type: 'button', class: 'btn', disabled: example, onclick: () => {

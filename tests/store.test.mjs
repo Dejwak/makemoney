@@ -333,7 +333,13 @@ test('kontrola faktury: co brání uložení a na co jen upozorní', async () =>
   Object.assign(state.draft.supplier, { ico: '', email: '' });
   let result = validateInvoice(state.draft);
   assert.deepEqual(result.problems, []);
-  assert.match(result.warnings.join(' '), /chybí tvoje IČO/);
+  assert.match(result.warnings.join(' '), /chybí IČO.*příležitostnou činnost/);
+  assert.match(result.warnings.join(' '), /Bez IČO nejsi v živnostenském rejstříku/, 'výchozí zápis v rejstříku bez IČO nesedí');
+  state.draft.supplier.register = '';
+  assert.ok(!/rejstříku/.test(validateInvoice(state.draft).warnings.join(' ')));
+  state.draft.supplier.ico = '27074358';
+  assert.deepEqual(validateInvoice(state.draft).warnings, []);
+  Object.assign(state.draft.supplier, { ico: '', email: '' });
   const check = (change) => {
     const draft = JSON.parse(JSON.stringify(state.draft));
     change(draft);
@@ -374,4 +380,14 @@ test('odkaz se žádostí o platbu: zakódování a zpět', async () => {
   assert.equal(decodeRequest('%%%'), null);
   assert.equal(decodeRequest(Buffer.from('[1,2]').toString('base64')).account, '');
   assert.equal(decodeRequest(Buffer.from('{"v":"12AB34567890123"}').toString('base64')).vs, '4567890123');
+});
+
+test('záloha se stejným číslem u více faktur na to upozorní', async () => {
+  const { store } = await freshStore();
+  const invoices = [{ id: 'a', number: '20260001' }, { id: 'b', number: 'x-2' }, { id: 'c', number: '20260001' }, { id: 'd', number: 'X-2' }, { id: 'e', number: '7' }];
+  assert.deepEqual(store.duplicateNumbers(invoices), ['20260001', 'x-2']);
+  const inspected = store.inspectBackup(JSON.stringify({ app: 'cinkne', data: { version: 1, invoices } }));
+  assert.equal(inspected.count, 5);
+  assert.deepEqual(inspected.duplicates, ['20260001', 'x-2']);
+  assert.deepEqual(store.inspectBackup(JSON.stringify({ app: 'cinkne', data: { version: 1, invoices: invoices.slice(0, 2) } })).duplicates, []);
 });

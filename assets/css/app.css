@@ -502,6 +502,8 @@ input[type="color"] { width: 44px; height: 32px; padding: 2px; border: 1px solid
 .row-who strong { overflow-wrap: anywhere; }
 .row-amount { min-width: 0; overflow-wrap: anywhere; }
 .row-number { font-size: 0.8125rem; color: var(--ink-2); }
+.row-dupe { font-size: 0.8125rem; font-weight: 600; color: var(--danger); }
+.edited-note { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .row-amount { font-size: 1.125rem; font-weight: 600; text-align: right; }
 .row-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 10px; }
 .row-due { font-size: 0.8125rem; color: var(--ink-2); }

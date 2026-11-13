@@ -311,6 +311,16 @@ const PAID_CONFIG = `export default {
     assert(!/\b(ty|tvůj|tvoje|tobě)\b/i.test(body), 'upomínka dlužníkovi musí vykat');
     await page.click('text=Použít zákonných 11,75 %');
     await eventually(async () => (await page.inputValue('#rem-body')).includes('11,75 % ročně'), 'úrok v textu');
+    // ručně upravený text přežije přepnutí tónu tam a zpět
+    await page.fill('#rem-body', 'Můj vlastní text výzvy.');
+    assert(await page.isVisible('text=Tohle je tvoje upravená verze'), 'upravený text má být označený');
+    await page.click('.segment >> nth=0');
+    await eventually(async () => (await page.inputValue('#rem-subject')).includes('Připomenutí faktury'), 'přepnutí na přátelský tón');
+    assert(!(await page.inputValue('#rem-body')).includes('Můj vlastní text'), 'jiný tón má svůj text');
+    await page.click('.segment >> nth=2');
+    await eventually(async () => (await page.inputValue('#rem-body')) === 'Můj vlastní text výzvy.', 'úprava poslední výzvy má zůstat');
+    await page.click('text=Vrátit původní text');
+    await eventually(async () => (await page.inputValue('#rem-body')).includes('dosud neeviduji'), 'návrat k původnímu textu');
     await page.click('text=Zapsat jako odeslanou');
     await eventually(async () => (await page.inputValue('#rem-body')).includes('přes předchozí připomenutí'), 'další výzva má zmínit předchozí');
     await go(page, 'prehled');
@@ -355,10 +365,17 @@ const PAID_CONFIG = `export default {
     fs.writeFileSync(bad, '{"nesmysl": true');
     await page.setInputFiles('#backup-file', bad);
     await eventually(async () => (await page.textContent('#toast')).includes('není platná záloha'), 'poškozený soubor má dostat srozumitelnou chybu');
+    fs.writeFileSync(bad, JSON.stringify({ app: 'cinkne', data: { version: 1, invoices: [{ id: 'a', number: '9' }, { id: 'b', number: '9' }] } }));
+    await page.setInputFiles('#backup-file', bad);
+    await page.waitForSelector('#backup-apply');
+    assert((await page.textContent('.backup .notice')).includes('stejné číslo: 9'), 'záloha se stejnými čísly má dostat varování');
+    await page.click('#backup-apply');
+    await eventually(async () => (await page.locator('.row-dupe').count()) === 2, 'faktury se stejným číslem mají být v přehledu označené');
     fs.writeFileSync(bad, JSON.stringify({ app: 'cinkne', data: { version: 1, invoices: [null, { id: 'x', number: '9' }], draft: null, rate: null, qr: null, reminder: null } }));
     await page.setInputFiles('#backup-file', bad);
     await page.click('#backup-apply');
     await eventually(async () => (await page.locator('.invoice-row').count()) === 1, 'neúplná záloha se má načíst vyčištěná');
+    equal(await page.locator('.row-dupe').count(), 0, 'jedna faktura duplicitní být nemůže');
     for (const route of ['faktura', 'upominky', 'qr', 'hodinovka', 'pro', 'prehled']) {
       await page.reload();
       await go(page, route);
