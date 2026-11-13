@@ -198,6 +198,7 @@ export function normalizeState(raw) {
       invoices: [], issuedNumbers: [], draft: exampleDraft(),
       pro: { unlocked: false, order: '' },
       rate: { ...RATE_DEFAULTS }, qr: { ...QR_DEFAULTS }, reminder: { interestRate: '' },
+      lastBackupAt: '',
     };
   }
   const invoices = (Array.isArray(raw.invoices) ? raw.invoices : []).slice(0, 5000).map((inv) => cleanInvoice(inv)).filter(Boolean);
@@ -239,6 +240,7 @@ export function normalizeState(raw) {
     rate,
     qr: pick(raw.qr, Object.keys(QR_DEFAULTS), 80),
     reminder: { interestRate: isObject(raw.reminder) ? text(raw.reminder.interestRate, 12) : '' },
+    lastBackupAt: Number.isNaN(Date.parse(raw.lastBackupAt)) ? '' : new Date(raw.lastBackupAt).toISOString(),
   };
 }
 
@@ -425,7 +427,9 @@ export function saveDraftAsInvoice({ asNew = false } = {}) {
   if (!state.issuedNumbers.includes(copy.number)) state.issuedNumbers = [copy.number, ...state.issuedNumbers].slice(0, 500);
   state.demo = false;
   state.dirty = false;
-  return { ok: persist(true), invoice: copy, created: !stored };
+  const ok = persist(true);
+  if (ok) requestPersistentStorage();
+  return { ok, invoice: copy, created: !stored };
 }
 
 export function startNewDraft() {
@@ -513,9 +517,38 @@ export function inspectBackup(fileText) {
 /** Nahradí data zálohou z inspectBackup(). Odemčení Pro zůstává, jak bylo. */
 export function applyBackup(data) {
   const pro = { ...state.pro };
-  applyState({ ...data, pro, demo: false });
+  // Co se právě načetlo ze zálohy, v záloze je.
+  applyState({ ...data, pro, demo: false, lastBackupAt: new Date().toISOString() });
   refreshPristineDraft();
   return persist(true);
+}
+
+/** Poznačí, že si uživatel právě stáhl zálohu. */
+export function markBackedUp() {
+  state.lastBackupAt = new Date().toISOString();
+  return persist(true);
+}
+
+/**
+ * Faktury, které vznikly po poslední záloze.
+ * @returns {{ count: number, oldest: string }} oldest = kdy vznikla nejstarší z nich (ISO), nebo ''
+ */
+export function unbackedInvoices() {
+  const fresh = state.invoices.filter((inv) => inv.createdAt && (!state.lastBackupAt || inv.createdAt > state.lastBackupAt));
+  return { count: fresh.length, oldest: fresh.map((inv) => inv.createdAt).sort()[0] || '' };
+}
+
+let persistAsked = false;
+/** Požádá prohlížeč, aby data téhle stránky sám nemazal. Nic nezaručuje, jen snižuje riziko. */
+function requestPersistentStorage() {
+  if (persistAsked) return;
+  persistAsked = true;
+  try {
+    const request = globalThis.navigator?.storage?.persist?.();
+    if (request && typeof request.catch === 'function') request.catch(() => {});
+  } catch {
+    /* prohlížeč to neumí */
+  }
 }
 
 /** Smaže všechna uložená data (záchrana při poškozeném stavu). */

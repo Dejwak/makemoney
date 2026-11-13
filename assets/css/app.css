@@ -539,6 +539,7 @@ input[type="color"] { width: 44px; height: 32px; padding: 2px; border: 1px solid
 .turnover.is-danger .meter span { background: var(--danger); }
 .turnover.is-danger .turnover-figure strong { color: var(--danger); }
 .backup { display: grid; gap: 12px; }
+.backup-status { font-weight: 600; }
 .backup p { max-width: 70ch; color: var(--ink-2); }
 .empty-card { display: grid; gap: 12px; justify-items: start; }
 

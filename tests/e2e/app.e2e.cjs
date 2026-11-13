@@ -276,6 +276,7 @@ const PAID_CONFIG = `export default {
     await saveOnly(page);
     await go(page, 'prehled');
     equal(await page.locator('.invoice-row').count(), 3, 'počet faktur po kopii');
+    assert((await page.textContent('#backup-note')).includes('3 faktury ještě nejsou v záloze'), 'po třech fakturách má přehled připomenout zálohu');
     const first = page.locator('.invoice-row').first();
     await first.locator('text=Smazat').dblclick();
     equal(await page.locator('.invoice-row').count(), 3, 'dvojklik na Smazat nesmí mazat');
@@ -348,10 +349,13 @@ const PAID_CONFIG = `export default {
   });
 
   await step('záloha: export, obnova s potvrzením, poškozené soubory', async () => {
-    const [download] = await Promise.all([page.waitForEvent('download'), page.click('text=Stáhnout zálohu')]);
+    assert((await page.textContent('.backup-status')).includes('Zálohu jsi zatím nestáhl'), 'stav zálohy před stažením');
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('.backup >> text=Stáhnout zálohu')]);
     const file = path.join(tmp, 'zaloha.json');
     await download.saveAs(file);
     assert(JSON.parse(fs.readFileSync(file, 'utf8')).app === 'cinkne', 'záloha nemá hlavičku');
+    await eventually(async () => (await page.textContent('.backup-status')).includes('Všechny faktury v ní jsou'), 'po stažení má být záloha aktuální');
+    assert(!(await page.isVisible('#backup-note')), 'připomínka zálohy má po stažení zmizet');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
     await page.waitForSelector('.overview-view');

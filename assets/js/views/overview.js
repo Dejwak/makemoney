@@ -3,7 +3,7 @@
 import { h, toast, confirmButton, chime } from '../ui.js';
 import {
   state, persist, visibleInvoices, exportBackup, inspectBackup, applyBackup, startNewDraft, editInvoice,
-  duplicateAsDraft, deleteInvoice, duplicateNumbers,
+  duplicateAsDraft, deleteInvoice, duplicateNumbers, markBackedUp, unbackedInvoices,
 } from '../lib/store.js';
 import { daysBetween, formatDate, formatMoney, formatWhole, invoiceStatus, invoiceTotals, todayIso, yearTurnover } from '../lib/calc.js';
 import { saveFile, saveErrorMessage } from '../lib/save.js';
@@ -108,6 +108,15 @@ export function overviewView({ go }) {
       listEl = h('ul', { class: 'invoice-list' }, shown.map(({ inv, status }) => row(inv, status, today, example)));
     }
 
+    // Připomínka zálohy: po třech nových fakturách, nebo když nová faktura čeká na zálohu déle než týden.
+    const unbacked = example ? { count: 0, oldest: '' } : unbackedInvoices();
+    const waiting = unbacked.oldest ? (Date.now() - Date.parse(unbacked.oldest)) / 86400000 : 0;
+    const backupNote = h('div', { class: 'notice', id: 'backup-note' },
+      h('p', null, h('strong', null, `${unbacked.count} ${plural(unbacked.count, 'faktura ještě není', 'faktury ještě nejsou', 'faktur ještě není')} v záloze.`),
+        ' Jsou uložené jen v tomhle prohlížeči. Když si ho vymažeš nebo vyměníš zařízení, přijdeš o ně.'),
+      h('div', { class: 'notice-actions' }, h('button', { type: 'button', class: 'btn btn-small', onclick: downloadBackup }, 'Stáhnout zálohu')));
+    backupNote.hidden = !(unbacked.count >= 3 || (unbacked.count >= 1 && waiting > 7));
+
     const exampleNote = h('div', { class: 'notice notice-example' },
       h('p', null, h('strong', null, 'Ukázkové faktury.'), ' Zmizí, jakmile uložíš první vlastní.'),
       h('div', { class: 'notice-actions' }, h('a', { class: 'btn btn-small', href: '#faktura' }, 'Vystavit fakturu')));
@@ -117,12 +126,25 @@ export function overviewView({ go }) {
     root.replaceChildren(...[
       h('div', { class: 'view-head' }, h('h1', null, 'Přehled'), h('p', { class: 'lede' }, 'Kdo zaplatil, kdo má čas a komu je potřeba se připomenout.')),
       exampleNote,
+      backupNote,
       tiles,
       h('div', { class: 'list-head' }, filters, draftAction('+ Nová faktura', () => { startNewDraft(); go('faktura'); }, 'btn btn-primary btn-small')),
       listEl,
       showTurnover && turnoverCard(list, year),
       backupCard(example),
     ].filter(Boolean));
+  }
+
+  async function downloadBackup() {
+    try {
+      await saveFile(`cinkne-zaloha-${todayIso()}.json`, exportBackup());
+    } catch (err) {
+      toast(saveErrorMessage(err), err.code === 'declined' ? '' : 'error');
+      return;
+    }
+    markBackedUp();
+    render();
+    toast('Záloha je stažená. Ulož si ji i mimo tohle zařízení, třeba do e-mailu nebo na cloud.');
   }
 
   function tile(label, value, note, kind) {
@@ -268,11 +290,17 @@ export function overviewView({ go }) {
       }
     };
     const empty = example || !state.invoices.length;
+    const fresh = empty ? 0 : unbackedInvoices().count;
+    const lastBackup = state.lastBackupAt ? formatDate(todayIso(new Date(state.lastBackupAt))) : '';
+    const backupStatus = empty ? '' : lastBackup
+      ? `Poslední záloha: ${lastBackup}.${fresh ? ` Od té doby ${plural(fresh, 'přibyla', 'přibyly', 'přibylo')} ${fresh} ${plural(fresh, 'faktura', 'faktury', 'faktur')}.` : ' Všechny faktury v ní jsou.'}`
+      : 'Zálohu jsi zatím nestáhl(a).';
     return h('section', { class: 'card backup' },
       h('h2', null, 'Záloha a export'),
-      h('p', null, 'Faktury jsou uložené jen v tomhle prohlížeči. Zálohu si stáhni vždy, když vystavíš něco důležitého, a na jiném zařízení ji zase načti. Vystavená PDF si archivuj, doklady je potřeba uchovávat roky.'),
+      h('p', null, 'Faktury jsou uložené jen v tomhle prohlížeči. Přijdeš o ně, když si vymažeš data prohlížeče nebo vyměníš zařízení, a některé prohlížeče (hlavně Safari) mažou data stránek, na které delší dobu nepřijdeš, samy. Zálohu si proto stahuj pravidelně a na jiném zařízení ji zase načti. Vystavená PDF si archivuj, doklady je potřeba uchovávat roky.'),
+      backupStatus && h('p', { class: 'backup-status' + (fresh || !lastBackup ? ' warn-text' : '') }, backupStatus),
       h('div', { class: 'actions-row' },
-        h('button', { type: 'button', class: 'btn', disabled: empty, onclick: () => save(`cinkne-zaloha-${todayIso()}.json`, exportBackup()) }, 'Stáhnout zálohu'),
+        h('button', { type: 'button', class: 'btn', disabled: empty, onclick: downloadBackup }, 'Stáhnout zálohu'),
         h('label', { class: 'btn', for: 'backup-file' }, 'Načíst zálohu', fileInput),
         h('button', { type: 'button', class: 'btn', disabled: empty || !pro, onclick: () => save(`cinkne-faktury-${todayIso()}.csv`, invoicesCsv(state.invoices)) }, 'Export CSV pro účetní'),
         !pro && h('a', { class: 'pro-tag', href: '#pro' }, 'Pro')

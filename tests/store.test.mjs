@@ -391,3 +391,27 @@ test('záloha se stejným číslem u více faktur na to upozorní', async () => 
   assert.deepEqual(inspected.duplicates, ['20260001', 'x-2']);
   assert.deepEqual(store.inspectBackup(JSON.stringify({ app: 'cinkne', data: { version: 1, invoices: invoices.slice(0, 2) } })).duplicates, []);
 });
+
+test('záloha: aplikace ví, které faktury v ní ještě nejsou', async () => {
+  const { state, store } = await freshStore();
+  assert.deepEqual(store.unbackedInvoices(), { count: 0, oldest: '' });
+  fillDraft(state);
+  store.saveDraftAsInvoice();
+  const first = store.unbackedInvoices();
+  assert.equal(first.count, 1);
+  assert.equal(first.oldest, state.invoices[0].createdAt);
+  state.draft.note = 'oprava';
+  store.saveDraftAsInvoice();
+  assert.equal(store.unbackedInvoices().count, 1, 'oprava téže faktury se nepočítá dvakrát');
+  assert.equal(store.markBackedUp(), true);
+  assert.equal(store.unbackedInvoices().count, 0);
+  state.invoices[0].createdAt = new Date(Date.now() + 1000).toISOString();
+  assert.equal(store.unbackedInvoices().count, 1, 'faktura novější než záloha v ní není');
+  state.invoices[0].createdAt = new Date(Date.now() - 1000).toISOString();
+  const backup = store.exportBackup();
+  state.lastBackupAt = '';
+  assert.equal(store.unbackedInvoices().count, 1);
+  store.applyBackup(store.inspectBackup(backup).data);
+  assert.equal(store.unbackedInvoices().count, 0, 'co se načetlo ze zálohy, v záloze je');
+  assert.equal(store.normalizeState({ version: 1, invoices: [], lastBackupAt: 'nesmysl' }).lastBackupAt, '');
+});
